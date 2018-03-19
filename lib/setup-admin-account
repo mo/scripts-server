@@ -1,0 +1,35 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$2" == "" ]; then
+    echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+    exit 1
+fi
+
+DEPLOYMENT_CONFIG_FILE="$1"
+SERVER_IP="$2"
+
+if [ ! -e "$DEPLOYMENT_CONFIG_FILE" ]; then
+    echo "error: deployment config $DEPLOYMENT_CONFIG_FILE does not exist."
+    exit 1
+fi
+
+ADMIN_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+ADMIN_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+SSHD_PORT=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+
+if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP 'echo online')" == "online" ]; then
+    exit 0
+fi
+
+ssh -q -t -o StrictHostKeyChecking=no root@$SERVER_IP "useradd -m -p \$(openssl passwd -1 $ADMIN_PASSWORD) -s /bin/bash -G sudo $ADMIN_USERNAME"
+
+ssh root@$SERVER_IP "mkdir -p /home/$ADMIN_USERNAME/.ssh"
+scp -qp ~/.ssh/id_rsa.pub root@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+ssh root@$SERVER_IP "chown -R $ADMIN_USERNAME:$ADMIN_USERNAME /home/$ADMIN_USERNAME/.ssh ; chmod 700 /home/$ADMIN_USERNAME/.ssh ; chmod 600 /home/$ADMIN_USERNAME/.ssh/authorized_keys"
+
+
+

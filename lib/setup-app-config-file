@@ -1,0 +1,91 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    INSTALL_APP_CONFIG_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('config_file' in json.load(sys.stdin)['app'])")
+    if [ "$INSTALL_APP_CONFIG_FILE" != "True" ]; then
+        echo "Skipping installation of application config file."
+        exit 0
+    fi
+    APP_CONFIG_TEMPLATE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file']['template'])")
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    APP_CONFIG_TEMPLATE_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$APP_CONFIG_TEMPLATE $ADMIN_USERNAME@$SERVER_IP:$APP_CONFIG_TEMPLATE_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_CONFIG_TEMPLATE_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    exit 0
+fi
+
+CONFIG_FILE=$2
+APP_CONFIG_TEMPLATE=$3
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
+APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")
+APP_CONFIG_FILE_DESTINATION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file']['destination'])")
+APP_CONFIG_FILE_FORMAT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file'].get('format', ''))")
+APP_MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('database', ''))")
+APP_MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('username', ''))")
+APP_MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('password', ''))")
+APP_HAPROXY_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('haproxy_registration', {}).get('port', ''))")
+APP_TRAEFIK_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('traefik_registration', {}).get('port', ''))")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+if [ -e $APP_CONFIG_FILE_DESTINATION ]; then
+    echo "Application config file at $APP_CONFIG_FILE_DESTINATION already exists, will not overwrite ..."
+    exit 0
+fi
+
+cd $APP_WORKING_DIRECTORY
+# Doing text replace in sed/awk doesn't work since passwords often contains weird characters which would
+# be interpreted as special chars (e.g. '&' in the replacement text is interpreted by sed as 'the part
+# of the input that matched the FROM regex'). Instead we're using Python string replace but the input
+# still needs double quote to be escaped so Python can read it properly. This works well for plain text
+# configuration files. However, often we're writing a json config file and then we can't just write out
+# the password as-is, instead we need to write it with escaped double quotes, since json uses double
+# quotes to delimit strings. This is done in the second sed call, which can be opted out of by setting
+# "app.config_file.format" to "plain".
+APP_MYSQL_DATABASE=$(echo $APP_MYSQL_DATABASE | sed 's/"/\\"/')
+APP_MYSQL_USERNAME=$(echo $APP_MYSQL_USERNAME | sed 's/"/\\"/')
+APP_MYSQL_PASSWORD=$(echo $APP_MYSQL_PASSWORD | sed 's/"/\\"/')
+if [ "$APP_CONFIG_FILE_FORMAT" != "plain" ]; then
+    APP_MYSQL_DATABASE=$(echo $APP_MYSQL_DATABASE | sed 's/\"/\\\\\"/')
+    APP_MYSQL_USERNAME=$(echo $APP_MYSQL_USERNAME | sed 's/\"/\\\\\"/')
+    APP_MYSQL_PASSWORD=$(echo $APP_MYSQL_PASSWORD | sed 's/\"/\\\\\"/')
+fi
+cat $APP_CONFIG_TEMPLATE \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_DATABASE%", "'${APP_MYSQL_DATABASE}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_USERNAME%", "'${APP_MYSQL_USERNAME}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_PASSWORD%", "'${APP_MYSQL_PASSWORD}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_HAPROXY_REGISTRATION_PORT%", "'${APP_HAPROXY_REGISTRATION_PORT}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_TRAEFIK_REGISTRATION_PORT%", "'${APP_TRAEFIK_REGISTRATION_PORT}'"))' \
+    > "$APP_CONFIG_FILE_DESTINATION"
+chown $APP_ID:$APP_ID $APP_CONFIG_FILE_DESTINATION
+chmod 600 $APP_CONFIG_FILE_DESTINATION

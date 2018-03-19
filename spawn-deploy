@@ -1,0 +1,37 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+else
+    echo "Run with env DEBUG=1 to see verbose output."
+fi
+
+SCRIPT_DIR=$(dirname $0)
+
+if [ "$2" == "" ]; then
+	echo "usage: $(basename $0) DEPLOYMENT_CONFIG MACHINE_NAME"
+	exit 1
+fi
+DEPLOYMENT_CONFIG=$1
+MACHINE_NAME=$2
+
+DEPLOYMENT_CONFIG_VALIDATE_JSON=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; json.load(sys.stdin)" 2>&1 ; true)
+if [ "$(echo $DEPLOYMENT_CONFIG_VALIDATE_JSON | grep -c JSONDecodeError)" != "0" ]; then
+    echo "error: deployment config is not valid JSON"
+    exit 1
+fi
+
+SERVER_IP=$($SCRIPT_DIR/lib/create-machine $DEPLOYMENT_CONFIG $MACHINE_NAME)
+$SCRIPT_DIR/deploy $DEPLOYMENT_CONFIG $SERVER_IP
+
+echo -e "\n\n\nFinished setting up new machine \"$MACHINE_NAME\" with ip $SERVER_IP\n"
+
+SSHD_PORT=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+if [ "$SSHD_PORT" != "22" ]; then
+    echo
+    echo "  NOTE: you picked a non-standard sshd port, you might want to add it in .ssh/config"
+    echo
+fi

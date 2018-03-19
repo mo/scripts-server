@@ -1,0 +1,161 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+    DEPLOYMENT_CONFIG_FILE="$1"
+    SERVER_IP="$2"
+
+    if [ ! -e "$DEPLOYMENT_CONFIG_FILE" ]; then
+        echo "error: deployment config $DEPLOYMENT_CONFIG_FILE does not exist."
+        exit 1
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh $SERVER_IP mktemp)
+    scp -qp $0 $SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh $SERVER_IP mktemp)
+    scp -qp $DEPLOYMENT_CONFIG_FILE $SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    ADMIN_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
+            shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+            rm -f $CONFIG_FILENAME_ON_SERVER ; \
+            rm -f $SCRIPT_FILENAME_ON_SERVER"
+
+    exit 0
+fi
+
+DEPLOYMENT_CONFIG_FILE="$2"
+
+SSHD_PORT=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+INSTALL_SMTP=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print('smtp' in json.load(sys.stdin))")
+if [ "$INSTALL_SMTP" == "True" ]; then
+    SMTP_SERVER=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['smtp']['server'])")
+    SMTP_AUTH_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['smtp']['auth']['username'])")
+    SMTP_AUTH_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['smtp']['auth']['password'])")
+fi
+ADMIN_EMAIL=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_email'])")
+ADMIN_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+
+DO_UPDATE=1
+if [ -e /var/lib/apt/periodic/update-success-stamp ]; then
+    SECS_SINCE_LAST_APT_UPDATE=$(($(date +%s)-$(stat -c %Y /var/lib/apt/periodic/update-success-stamp)))
+    if [ "$SECS_SINCE_LAST_APT_UPDATE" -lt "$((12*60*60))" ]; then
+        DO_UPDATE=0
+    fi
+fi
+if [ "$DO_UPDATE" == "1" ]; then
+    apt-get update
+fi
+apt-get autoremove -y
+# For details on avoiding interactive dialogs using UCF and debconf, see:
+# https://askubuntu.com/questions/146921/how-do-i-apt-get-y-dist-upgrade-without-a-grub-config-prompt
+DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
+apt-get autoremove -y
+
+echo -e "\n------[ sshd ]-----------------------------------------------------------\n"
+apt-get install -y augeas-tools
+augtool set /files/etc/ssh/sshd_config/PasswordAuthentication "no"
+augtool set /files/etc/ssh/sshd_config/PermitRootLogin "no"
+augtool set /files/etc/ssh/sshd_config/X11Forwarding "no"
+augtool set /files/etc/ssh/sshd_config/Port $SSHD_PORT
+
+# The values below are already set in the default ubuntu config, setting anyway just to make sure:
+augtool set /files/etc/ssh/sshd_config/PermitEmptyPasswords "no"
+augtool set /files/etc/ssh/sshd_config/UsePrivilegeSeparation "yes"
+
+systemctl reload sshd
+
+echo -e "\n------[ ufw ]------------------------------------------------------------\n"
+ufw default deny incoming
+ufw allow $SSHD_PORT
+ufw allow http
+ufw allow https
+ufw --force enable
+ufw status verbose
+
+echo -e "\n------[ unattended-upgrades ]--------------------------------------------\n"
+
+apt-get install -y unattended-upgrades apt-listchanges
+tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null <<EOF_MARKER
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF_MARKER
+
+tee /etc/apt/apt.conf.d/50unattended-upgrades >/dev/null <<EOF_MARKER
+Unattended-Upgrade::Allowed-Origins {
+        "\${distro_id}:\${distro_codename}";
+        "\${distro_id}:\${distro_codename}-security";
+        "\${distro_id}:\${distro_codename}-updates";
+//      "\${distro_id}:\${distro_codename}-proposed";
+//      "\${distro_id}:\${distro_codename}-backports";
+};
+Unattended-Upgrade::Package-Blacklist {
+//      "libc6";
+//      "libc6-dev";
+//      "libc6-i686";
+};
+Unattended-Upgrade::Mail "$ADMIN_EMAIL";
+Unattended-Upgrade::MailOnlyOnError "false";
+Unattended-Upgrade::Automatic-Reboot "true";
+// The time specified here is passed verbatim to "shutdown -r WHEN" so if the
+// time is specified as HH:MM then the timezone is the same as "date" reports.
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+EOF_MARKER
+
+tee /etc/apt/listchanges.conf >/dev/null <<EOF_MARKER
+[apt]
+frontend=text
+email_address=root
+confirm=0
+save_seen=/var/lib/apt/listchanges.db
+which=both
+EOF_MARKER
+
+if [ "$INSTALL_SMTP" != "True" ]; then
+    echo "Skipping SMTP setup since deployment config has no \"smtp\" key set."
+    exit 0
+fi
+
+echo -e "\n------[ ssmtp ]----------------------------------------------------------\n"
+
+apt-get install -y ssmtp
+
+tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOF_MARKER
+root=$ADMIN_EMAIL
+mailhub=$SMTP_SERVER
+AuthUser=$SMTP_AUTH_USERNAME
+AuthPass=$SMTP_AUTH_PASSWORD
+UseSTARTTLS=YES
+EOF_MARKER
+
+tee /etc/cron.d/reboot-email >/dev/null <<EOF_MARKER
+@reboot root /etc/ssmtp/send-reboot-email
+EOF_MARKER
+
+tee /etc/ssmtp/send-reboot-email >/dev/null <<EOF_MARKER
+#!/bin/bash
+SCRIPT_DIR="\$(dirname \$0)"
+EMAIL_MESSAGE="subject: host \$(hostname) rebooted at \$(date '+%Y-%m-%d %H:%M %Z')"
+EMAIL_TO="\$(cat \$SCRIPT_DIR/ssmtp.conf | grep root | grep = | cut -f 2 -d = | head -1)"
+echo \$EMAIL_MESSAGE | /usr/sbin/ssmtp \$EMAIL_TO
+EOF_MARKER
+chmod 700 /etc/ssmtp/send-reboot-email
+
+echo

@@ -1,0 +1,79 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    HAPROXY_REGISTRATION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('haproxy_registration' in json.load(sys.stdin)['app'])")
+    if [ "$HAPROXY_REGISTRATION" != "True" ]; then
+        echo "Skipping application setup in haproxy."
+        exit 0
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    exit 0
+fi
+
+CONFIG_FILE=$2
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_EMAIL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_email'])")
+APP_DOMAIN_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['domain'])")
+APP_DOMAIN_SANS=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['app'].get('domain_sans', [])))")
+APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
+APP_WEBSERVER_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['haproxy_registration']['port'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+tee /etc/haproxy/frontends/https-main/$APP_ID.cfg >/dev/null <<EOF_MARKER
+use_backend $APP_ID if { hdr_dom(host) -i $APP_DOMAIN_NAME }
+EOF_MARKER
+
+mkdir -p /etc/haproxy/backends/$APP_ID/
+tee /etc/haproxy/backends/$APP_ID/00-base.cfg >/dev/null <<EOF_MARKER
+server server1 127.0.0.1:$APP_WEBSERVER_PORT
+EOF_MARKER
+
+/usr/local/sbin/haproxy-config.py
+
+if [ ! -e "/etc/letsencrypt/live/$APP_DOMAIN_NAME" ]; then
+
+    systemctl stop haproxy
+
+    DOMAIN_SANS_PARAMS=$(echo $APP_DOMAIN_SANS | tr ' ' '\n' | xargs -I SAN echo -d SAN | tr '\n' ' ')
+    certbot certonly --standalone -m $ADMIN_EMAIL --agree-tos -n -d $APP_DOMAIN_NAME $DOMAIN_SANS_PARAMS
+
+    echo "Concatenating certificates for use in haproxy ..."
+    /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates
+
+    systemctl start haproxy
+
+fi
+
+echo "Restarting haproxy ..."
+systemctl start haproxy
+echo "haproxy restart finished."

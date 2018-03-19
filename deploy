@@ -1,0 +1,64 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+else
+    echo "Run with env DEBUG=1 to see verbose output."
+fi
+
+SCRIPT_DIR=$(dirname $0)
+
+if [ "$2" == "" ]; then
+	echo "usage: $(basename $0) DEPLOYMENT_CONFIG SERVER_IP"
+	exit 1
+fi
+DEPLOYMENT_CONFIG=$1
+SERVER_IP=$2
+
+run-step() {
+    STEP_NAME=$1
+    PROFILING_CHECKPOINTS="$PROFILING_CHECKPOINTS $STEP_NAME:$(date +%s) "
+    DEBUG=$DEBUG $SCRIPT_DIR/lib/$STEP_NAME $DEPLOYMENT_CONFIG $SERVER_IP
+}
+
+START_TIME=$(date +%s)
+
+run-step setup-admin-account
+run-step setup-basics
+run-step setup-haproxy-certbot
+run-step setup-node
+run-step setup-mysql
+run-step setup-cli-utils
+run-step setup-app-webserver-startup
+run-step setup-app-config-file
+run-step setup-app-in-haproxy
+run-step setup-app-in-traefik
+run-step setup-app-in-mysql
+
+TIME_NOW=$(date +%s)
+SECS_TAKEN=$(($TIME_NOW - $START_TIME))
+MINS_TAKEN=$(($SECS_TAKEN/60))
+REMAINING_SECS=$(($SECS_TAKEN-$MINS_TAKEN*60))
+if [ "$MINS_TAKEN" -gt "0" ]; then
+    echo "All steps total took ${MINS_TAKEN}m${REMAINING_SECS}s to run."
+else
+    echo "All steps total took $SECS_TAKEN seconds to run."
+fi
+echo
+
+if [ "$PROFILE_STEPS" != "0" ]; then
+    echo
+    echo "Time taken for each step:"
+    (for CP in $PROFILING_CHECKPOINTS; do
+        TIMESTAMP=$(echo $CP | cut -f 2 -d :)
+        if [ ! -z "$PREV_TIMESTAMP" ]; then
+            SECS_TAKEN=$(($TIMESTAMP-$PREV_TIMESTAMP))
+            echo "it took $SECS_TAKEN seconds to run $PREV_NAME"
+        fi
+        PREV_TIMESTAMP=$TIMESTAMP
+        PREV_NAME=$(echo $CP | cut -f 1 -d :)
+    done) | sort -k3,3 -rn
+fi

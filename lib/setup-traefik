@@ -1,0 +1,133 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    INSTALL_TRAEFIK=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('traefik' in json.load(sys.stdin))")
+    if [ "$INSTALL_TRAEFIK" != "True" ]; then
+        echo "Skipping installation of Traefik."
+        exit 0
+    fi
+
+    SCRIPT_DIR=$(dirname $0)
+    scp -p -P $SSHD_PORT $SCRIPT_DIR/setup-traefik-files/traefik_linux-amd64 $ADMIN_USERNAME@$SERVER_IP:/tmp/traefik
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    echo
+    exit 0
+fi
+
+CONFIG_FILE=$2
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_EMAIL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_email'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+adduser --system --group --no-create-home --disabled-login traefik
+
+mv /tmp/traefik /usr/local/bin/traefik
+chown root:traefik /usr/local/bin/traefik
+chmod 0755 /usr/local/bin/traefik
+# We're going to run traefik as non-root user "traefik" but it needs
+# to be able to open ports 80/443 so we give it that capability explicitly:
+setcap 'cap_net_bind_service=+ep' /usr/local/bin/traefik
+
+mkdir -p /etc/traefik/conf.d/
+chown -R root:traefik /etc/traefik
+chmod -R 750 /etc/traefik
+chmod -R 750 /etc/traefik/cond.f
+tee /etc/traefik/traefik.toml >/dev/null <<EOF_MARKER
+defaultEntryPoints = ["http", "https"]
+
+[entryPoints]
+  [entryPoints.http]
+  address = ":80"
+    [entryPoints.http.redirect]
+    entryPoint = "https"
+  [entryPoints.https]
+  address = ":443"
+    [entryPoints.https.tls]
+
+[acme]
+  entryPoint = "https"
+  storage = "/etc/traefik/acme.json"
+  email = "$ADMIN_EMAIL"
+  onHostRule = true
+
+[acme.httpChallenge]
+  entryPoint = "http"
+
+[traefikLog]
+  filePath = "/var/log/traefik.log"
+
+[accessLog]
+  filePath = "/var/log/traefik-access.log"
+
+[web]
+  address = "127.0.0.1:8787"
+
+[file]
+  watch = true
+  directory = "/etc/traefik/conf.d"
+EOF_MARKER
+chmod 600 /etc/traefik/traefik.toml
+
+touch /var/log/traefik.log
+chown traefik:traefik /var/log/traefik.log
+chmod 660 /var/log/traefik.log
+
+touch /var/log/traefik-access.log
+chown traefik:traefik /var/log/traefik-access.log
+chmod 660 /var/log/traefik-access.log
+
+touch /etc/traefik/acme.json
+chown traefik:traefik /etc/traefik/acme.json
+# NOTE: User "traefik" is allow to _write_ to acme.json because Traefik
+# automatically retrieves and renews certificates and saves them in this file.
+chmod 600 /etc/traefik/acme.json
+
+tee /etc/systemd/system/traefik.service >/dev/null <<EOF_MARKER
+[Unit]
+Description=Traefik
+After=network.target
+
+[Service]
+Type=simple
+User=traefik
+WorkingDirectory=/
+ExecStart=/usr/local/bin/traefik -c /etc/traefik/traefik.toml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF_MARKER
+chmod 644 /etc/systemd/system/traefik.service
+
+systemctl daemon-reload
+systemctl enable traefik.service
+systemctl start traefik.service

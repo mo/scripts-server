@@ -1,0 +1,114 @@
+#!/bin/bash
+
+#
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+#
+# To completely uninstall MySQL and delete ALL USER DATA INCLUDING DATABASES:
+# sudo apt purge --auto-remove mysql-server
+# echo PURGE | sudo debconf-communicate mysql-server
+# # Verify that you got rid of all entries in debconf:
+# # debconf-get-selections | grep -i mysql
+# sudo rm -rf /etc/mysql
+# sudo rm -rf /var/lib/mysql
+#
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+# *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+#
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP [APP_SERVER1 [APP_SERVER2 [APP_SERVER3 ...]]]"
+        echo
+        echo "NOTE: If no APP_SERVERx are specified it assumes the app is running on the same"
+        echo "      machine as the database (i.e. on $SERVER_IP) and it will then allow the"
+        echo "      database user that the application uses to connect from localhost only."
+        echo
+        exit 1
+    fi
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    shift 2
+    APP_HOSTS="$@"
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    APP_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin)['app'])")
+    if [ "$APP_MYSQL" != "True" ]; then
+        echo "Skipping application setup in MySQL."
+        exit 0
+    fi
+    MYSQL_EMPTY_SCHEMA_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql'].get('empty_schema_file', ''))")
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    if [ "$MYSQL_EMPTY_SCHEMA_FILE" != "" ]; then
+        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+        scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$MYSQL_EMPTY_SCHEMA_FILE $ADMIN_USERNAME@$SERVER_IP:$EMPTY_DB_SCHEMA_FILENAME_ON_SERVER
+    else
+        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER=""
+    fi
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $EMPTY_DB_SCHEMA_FILENAME_ON_SERVER $APP_HOSTS ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    exit 0
+fi
+
+CONFIG_FILE=$2
+DB_SCHEMA_FILENAME=$3
+
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+MYSQL_ROOT_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['mysql']['root_password'])")
+
+MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['database'])")
+MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['username'])")
+MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['password'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+shift 3
+APP_HOSTS="$@"
+
+DB_EXISTS=$(mysql -u root -p"$MYSQL_ROOT_PASSWORD" -s -N -e "SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='"$MYSQL_DATABASE"'" 2>&1 | grep -vi "password on the command line")
+
+if [ "$DB_EXISTS" != "1" ]; then
+
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "create database $MYSQL_DATABASE; " 2>&1 | \
+        grep -vi "password on the command line"
+
+    if [ "$DB_SCHEMA_FILENAME" != "" ]; then
+        mysql -u root -p"$MYSQL_ROOT_PASSWORD" $MYSQL_DATABASE < "$DB_SCHEMA_FILENAME" 2>&1 | \
+            grep -vi "password on the command line"
+    fi
+fi
+
+if [ "$APP_HOSTS" == "" ]; then
+    APP_HOSTS="localhost"
+fi
+
+for APP_SERVER in $APP_HOSTS; do
+    ESCAPED_MYSQL_PASSWORD=$(echo $MYSQL_PASSWORD | sed "s/'/\\\'/")
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "\
+            grant DELETE, INSERT, SELECT, UPDATE on $MYSQL_DATABASE.* to \
+                '$MYSQL_USERNAME'@'$APP_SERVER' identified by '"$ESCAPED_MYSQL_PASSWORD"'; \
+            flush privileges; " 2>&1 | \
+        grep -vi "password on the command line"
+done

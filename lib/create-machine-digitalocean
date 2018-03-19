@@ -1,0 +1,59 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$2" == "" ]; then
+    echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE DROPLET_NAME"
+    exit 1
+fi
+
+DEPLOYMENT_CONFIG=$1
+DROPLET_NAME=$2
+
+MACHINE_IMAGE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['image'])")
+MACHINE_SIZE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['size'])")
+MACHINE_REGION=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['region'])")
+MACHINE_FLOATING_IP=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['floating_ip'])")
+
+if [ "$(which doctl)" == "" ]; then
+    echo "error: doctl is not installed, cannot create droplets."
+    exit 1
+elif [ "$MACHINE_IMAGE" == "" ]; then
+    echo "error: machine.image must be set in deployment config"
+    exit 1
+elif [ "$MACHINE_SIZE" == "" ]; then
+    echo "error: machine.size must be set in deployment config"
+    exit 1
+elif [ "$MACHINE_REGION" == "" ]; then
+    echo "error: machine.region must be set in deployment config"
+    exit 1
+fi
+
+DROPLET_DETAILS=$(doctl compute droplet create \
+    --no-header \
+    --format ID,PublicIPv4 \
+    --ssh-keys $(ssh-keygen -E md5 -lf $HOME/.ssh/id_rsa.pub | grep -oE 'MD5[^ ]*' | cut -c5-) \
+    --enable-ipv6 \
+    --wait \
+    --size $MACHINE_SIZE \
+    --image $MACHINE_IMAGE \
+    --region $MACHINE_REGION \
+    $DROPLET_NAME)
+
+DROPLET_ID=$(echo $DROPLET_DETAILS | cut -f 1 -d ' ')
+DROPLET_IPV4=$(echo $DROPLET_DETAILS | cut -f 2 -d ' ')
+
+while [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o ConnectionAttempts=1 root@$DROPLET_IPV4 'echo online')" != "online" ]; do
+        sleep 1
+done
+
+if [ "$MACHINE_FLOATING_IP" != "" ]; then
+    # Assigning to a variable makes output visible when running with DEBUG=1
+    # and prevents "floating-ip-action" output from reaching stdout (we only
+    # want to print the ipv4 of the created machine).
+    FLOATING_IP_ASSIGNMENT_OUTPUT=$(doctl compute floating-ip-action assign $MACHINE_FLOATING_IP $DROPLET_ID)
+fi
+
+echo $DROPLET_IPV4

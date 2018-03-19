@@ -1,0 +1,57 @@
+{
+    "machine": {
+        "vendor": "digitalocean",
+        "size": "s-1vcpu-1gb",
+        "image": "ubuntu-16-04-x64",
+        "region": "ams3",
+        "floating_ip": "1.2.3.4 <-- create a floating ip at digital ocean and enter it here"
+    },
+    "admin_username": "admin username, typically your usual username so you can type 'ssh host' instead of 'ssh something@host'",
+    "admin_password": "password of admin user, will be used for sudo only",
+    "admin_email": "your email, will be used to certbot admin stuff and for notifications when security updates are installed",
+    "sshd_port": 22,
+    "smtp": {
+        "server": "smtp.your-mail-vendor.com",
+        "auth": {
+            "username": "your-username-on-smtp-server",
+            "password": "password-on-smtp-server"
+        }
+    },
+
+    "comment": "if you omit the 'mysql' key below, mysql wont be installed; same goes for 'node' and 'haproxy' keys and a 'traefik' key can be added if you want that instead of haproxy",
+    "mysql": {
+        "root_password": "some password that will be set as the root password in mysql"
+    },
+    "node": {},
+    "haproxy": {},
+
+    "comment": "if the 'cli-utils' util key is present, a few extra cli utils is installed",
+    "cli-utils": {},
+
+    "app": {
+        "id": "some app id you invent, stick to lowercase, numbers and underscore because this id is used in many different contexts",
+        "description": "description for systemd service file",
+        "working_directory": "/opt/app-directory-for-your-app",
+        "exec": "/opt/app-directory-for-your-app/script-that-starts-your-app",
+        "domain": "foobar.com <-- enter a domain for the app, note that DNS must point to the floating ip you specified above -- otherwise the letsencrypt certificate cannot be issued",
+        "domain_sans": ["www.foobar.com"],
+        "comment": "the domain_sans key above is optional",
+        "comment": "the rootless_restart key below allows the application linux user to restart the app using 'sudo systemctl restart APP_ID' without specifying a password, this is handy for no-touch redeployment where you rsync up new files and then restart the app",
+        "rootless_restart": true,
+        "comment": "haproxy_registration.port is the port that the app webserver will open and serve the app on, haproxy will receive HTTPS traffic and forward it to this port in HTTP format, the app learns about the specific port number via the app config file which is set below in 'config_file.template'",
+        "haproxy_registration": {
+            "port": 3000
+        },
+        "mysql": {
+            "empty_schema_file": "data/database-empty.sql <-- SQL that creates all the empty tables for your app, this file can probably be generated using 'mysqldump --no-data --skip-add-drop-table --skip-comments SOME_DB' or similar",
+            "database": "app_database_name",
+            "username": "app_db_username",
+            "password": "generate an app db password and put it here"
+        },
+        "config_file": {
+            "template": "data/config.json.template",
+            "destination": "/opt/app-directory-for-your-app/config.json"
+        }
+    }
+}
+

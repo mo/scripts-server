@@ -1,0 +1,71 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    INSTALL_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin))")
+    if [ "$INSTALL_MYSQL" != "True" ]; then
+        echo "Skipping installation of MySQL."
+        exit 0
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    echo
+    exit 0
+fi
+
+CONFIG_FILE=$2
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+MYSQL_ROOT_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['mysql']['root_password'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+if [ "$(dpkg -l | grep -c mysql-server)" != "0" ] || [ -e "/var/lib/mysql" ]; then
+
+    echo
+    echo "NOTE: MySQL is already installed, skipping ..."
+else
+    echo "mysql-server mysql-server/root_password password rootpass" | debconf-set-selections
+    echo "mysql-server mysql-server/root_password_again password rootpass" | debconf-set-selections
+
+    apt-get install -y mysql-server
+
+    mysqladmin -u root -prootpass password $MYSQL_ROOT_PASSWORD | \
+        grep -vi "password on the command line"
+fi
+
+apt-get install -y expect
+
+expect -c "
+  spawn mysql_secure_installation --use-default
+  expect \"Enter password for user root\"
+  send \"$MYSQL_ROOT_PASSWORD\r\"
+  expect \"All done\"
+"
+
+apt-get purge --autoremove -y expect

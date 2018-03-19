@@ -1,0 +1,93 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    PUBKEY_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $HOME/.ssh/id_rsa.pub $ADMIN_USERNAME@$SERVER_IP:$PUBKEY_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $PUBKEY_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    exit 0
+fi
+
+CONFIG_FILE=$2
+UPLOADED_PUBKEY_FILENAME=$3
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
+APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['exec'])")
+APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")
+APP_DESCRIPTION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['description'])")
+APP_ROOTLESS_RESTART=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app'].get('rootless_restart', False))")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+if [ "$(id $APP_ID 2>/dev/null)" == "" ]; then
+    adduser --gecos '' --disabled-password $APP_ID
+fi
+
+mkdir -p $APP_WORKING_DIRECTORY
+chown $APP_ID:$APP_ID $APP_WORKING_DIRECTORY
+chmod 700 $APP_WORKING_DIRECTORY
+
+tee /etc/systemd/system/$APP_ID.service >/dev/null <<EOF_MARKER
+[Unit]
+Description=$APP_DESCRIPTION
+After=network.target
+
+[Service]
+Type=simple
+User=$APP_ID
+WorkingDirectory=$APP_WORKING_DIRECTORY
+ExecStart=$APP_EXEC
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF_MARKER
+chmod 644 /etc/systemd/system/$APP_ID.service
+
+if [ "$APP_ROOTLESS_RESTART" == "True" ]; then
+    echo "%$APP_ID ALL=(ALL) NOPASSWD: /bin/systemctl restart $APP_ID" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID
+else
+    echo "" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID
+fi
+
+systemctl daemon-reload
+systemctl enable $APP_ID.service
+systemctl start $APP_ID.service
+
+mkdir -p /home/$APP_ID/.ssh
+chown $APP_ID:$APP_ID /home/$APP_ID/.ssh
+chmod 700 /home/$APP_ID/.ssh
+if [ ! -e "/home/$APP_ID/.ssh/authorized_keys" ]; then
+    mv $UPLOADED_PUBKEY_FILENAME /home/$APP_ID/.ssh/authorized_keys
+    chown $APP_ID:$APP_ID /home/$APP_ID/.ssh/authorized_keys
+    chmod 600 /home/$APP_ID/.ssh/authorized_keys
+fi

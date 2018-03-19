@@ -1,0 +1,22 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$2" == "" ]; then
+    echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE MACHINE_NAME"
+    exit 1
+fi
+
+SCRIPT_DIR=$(dirname $0)
+DEPLOYMENT_CONFIG=$1
+MACHINE_NAME=$2
+
+MACHINE_VENDOR=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['vendor'])")
+
+if [ "$MACHINE_VENDOR" == "digitalocean" ]; then
+    $SCRIPT_DIR/create-machine-digitalocean $DEPLOYMENT_CONFIG $MACHINE_NAME
+else
+    echo "error: unknown cloud vendor"
+fi

@@ -1,0 +1,150 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    CONFIG_FILE="$1"
+    SERVER_IP="$2"
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    INSTALL_HAPROXY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('haproxy' in json.load(sys.stdin))")
+    if [ "$INSTALL_HAPROXY" != "True" ]; then
+        echo "Skipping installation of haproxy."
+        exit 0
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    HAPROXY_CONFIG_SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $(dirname $0)/setup-haproxy-certbot-files/haproxy-config.py \
+        $ADMIN_USERNAME@$SERVER_IP:$HAPROXY_CONFIG_SCRIPT_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $HAPROXY_CONFIG_SCRIPT_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    echo
+    exit 0
+fi
+
+CONFIG_FILE=$2
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+HAPROXY_CONFIG_SCRIPT_FILENAME_TEMP_FILENAME=$3
+mv $HAPROXY_CONFIG_SCRIPT_FILENAME_TEMP_FILENAME /usr/local/sbin/haproxy-config.py
+chown root:root /usr/local/sbin/haproxy-config.py
+chmod 755 /usr/local/sbin/haproxy-config.py
+
+apt-get install -y haproxy
+
+if [ ! -f "/etc/haproxy/dhparams2048.pem" ]; then
+    openssl dhparam -out /etc/haproxy/dhparams2048.pem 2048
+    chmod 600 /etc/haproxy/dhparams2048.pem
+    shred $HOME/.rnd
+    rm -f $HOME/.rnd
+fi
+
+mkdir -p /etc/haproxy/global/
+tee /etc/haproxy/global/00-base.cfg >/dev/null <<EOF_MARKER
+log /dev/log    local0
+log /dev/log    local1 notice
+chroot /var/lib/haproxy
+stats socket /run/haproxy/admin.sock mode 660 level admin
+stats timeout 30s
+user haproxy
+group haproxy
+daemon
+
+# Default SSL material locations
+ca-base /etc/ssl/certs
+crt-base /etc/ssl/private
+
+# Default ciphers to use on SSL-enabled listening sockets.
+# For more information, see ciphers(1SSL). This list is from:
+#  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
+ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+ssl-default-bind-options no-sslv3
+EOF_MARKER
+
+tee /etc/haproxy/global/01-dhparam.cfg >/dev/null <<EOF_MARKER
+ssl-dh-param-file /etc/haproxy/dhparams2048.pem
+EOF_MARKER
+
+mkdir -p /etc/haproxy/defaults/
+tee /etc/haproxy/defaults/00-base.cfg >/dev/null <<EOF_MARKER
+log     global
+mode    http
+option  httplog
+option  dontlognull
+timeout connect 5000
+timeout client  50000
+timeout server  50000
+errorfile 400 /etc/haproxy/errors/400.http
+errorfile 403 /etc/haproxy/errors/403.http
+errorfile 408 /etc/haproxy/errors/408.http
+errorfile 500 /etc/haproxy/errors/500.http
+errorfile 502 /etc/haproxy/errors/502.http
+errorfile 503 /etc/haproxy/errors/503.http
+errorfile 504 /etc/haproxy/errors/504.http
+EOF_MARKER
+
+mkdir -p /etc/haproxy/frontends/http-main/
+tee /etc/haproxy/frontends/http-main/00-base.cfg >/dev/null <<EOF_MARKER
+bind :::80 v4v6
+
+redirect scheme https code 301 if !{ ssl_fc }
+EOF_MARKER
+
+mkdir -p /etc/haproxy/certs/
+chmod 700 /etc/haproxy/certs/
+mkdir -p /etc/haproxy/frontends/https-main/
+tee /etc/haproxy/frontends/https-main/00-base.cfg >/dev/null <<EOF_MARKER
+bind :::443 v4v6 ssl crt /etc/haproxy/certs/
+
+EOF_MARKER
+
+# regenerate /etc/haproxy/haproxy.cfg based on other config files in /etc/haproxy/*
+/usr/local/sbin/haproxy-config.py
+
+if [ "$(which certbot)" == "" ]; then
+    apt-get update
+    apt-get install -y software-properties-common
+    add-apt-repository -y ppa:certbot/certbot
+    apt-get update
+    apt-get install -y certbot
+fi
+
+# certbot will store .pem files for both certificate and private key under /etc/letsencrypt/live/
+
+tee /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates >/dev/null <<EOF_MARKER
+#!/bin/sh
+systemctl stop haproxy
+certbot -q renew | sudo tee -a /var/log/certbot-auto-renewal.log
+mkdir -p /etc/haproxy/certs
+ALL_DOMAINS=\$(find /etc/letsencrypt/live/ -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | tr '\n' ' ')
+for DOMAIN in \$ALL_DOMAINS; do
+# haproxy needs a single .pem file that contains both the certificate and the private key.
+cat /etc/letsencrypt/live/\$DOMAIN/fullchain.pem /etc/letsencrypt/live/\$DOMAIN/privkey.pem | sudo tee /etc/haproxy/certs/\$DOMAIN.pem >/dev/null
+done
+chmod -R go-rwx /etc/haproxy/certs
+systemctl restart haproxy
+EOF_MARKER
+chmod 755 /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates
