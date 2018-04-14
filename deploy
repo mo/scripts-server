@@ -42,12 +42,13 @@ TIME_NOW=$(date +%s)
 SECS_TAKEN=$(($TIME_NOW - $START_TIME))
 MINS_TAKEN=$(($SECS_TAKEN/60))
 REMAINING_SECS=$(($SECS_TAKEN-$MINS_TAKEN*60))
+echo
+echo
 if [ "$MINS_TAKEN" -gt "0" ]; then
     echo "All steps total took ${MINS_TAKEN}m${REMAINING_SECS}s to run."
 else
     echo "All steps total took $SECS_TAKEN seconds to run."
 fi
-echo
 
 if [ "$PROFILE_STEPS" != "0" ]; then
     echo
