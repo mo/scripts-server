@@ -32,6 +32,7 @@ run-step setup-haproxy-certbot
 run-step setup-node
 run-step setup-mysql
 run-step setup-cli-utils
+run-step setup-app-misc
 run-step setup-app-webserver-startup
 run-step setup-app-config-file
 run-step setup-app-in-haproxy

@@ -49,6 +49,7 @@ APP_CONFIG_FILE_FORMAT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(
 APP_MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('database', ''))")
 APP_MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('username', ''))")
 APP_MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('password', ''))")
+APP_EXTRA_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('extra_directory', ''))")
 APP_HAPROXY_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('haproxy_registration', {}).get('port', ''))")
 APP_TRAEFIK_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('traefik_registration', {}).get('port', ''))")
 
@@ -84,6 +85,7 @@ cat $APP_CONFIG_TEMPLATE \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_DATABASE%", "'${APP_MYSQL_DATABASE}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_USERNAME%", "'${APP_MYSQL_USERNAME}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_MYSQL_PASSWORD%", "'${APP_MYSQL_PASSWORD}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_EXTRA_DIRECTORY%", "'${APP_EXTRA_DIRECTORY}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_HAPROXY_REGISTRATION_PORT%", "'${APP_HAPROXY_REGISTRATION_PORT}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_TRAEFIK_REGISTRATION_PORT%", "'${APP_TRAEFIK_REGISTRATION_PORT}'"))' \
     > "$APP_CONFIG_FILE_DESTINATION"
