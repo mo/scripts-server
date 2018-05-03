@@ -63,11 +63,12 @@ fi
 if [ "$DO_UPDATE" == "1" ]; then
     apt-get update
 fi
+
 apt-get autoremove -y
 # For details on avoiding interactive dialogs using UCF and debconf, see:
 # https://askubuntu.com/questions/146921/how-do-i-apt-get-y-dist-upgrade-without-a-grub-config-prompt
 DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
-apt-get autoremove -y
+DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
 
 echo -e "\n------[ sshd ]-----------------------------------------------------------\n"
 apt-get install -y augeas-tools
