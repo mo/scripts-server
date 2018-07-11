@@ -44,6 +44,10 @@ if [ $EUID -ne 0 ]; then
 fi
 echo ; echo
 
+# Certain node packages needs make/gcc to build native code.
+# An example is "bcrypt" (on platforms where pre-built packages are not availble)
+apt-get install -y build-essential
+
 if [ "$(which node)" == "" ]; then
     curl -sL https://deb.nodesource.com/setup_8.x | bash -
     apt-get install -y nodejs
