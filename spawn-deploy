@@ -18,6 +18,10 @@ fi
 DEPLOYMENT_CONFIG=$1
 MACHINE_NAME=$2
 
+if [ ! -f "$DEPLOYMENT_CONFIG" ]; then
+    echo "error: no such file $DEPLOYMENT_CONFIG"
+    exit 1
+fi
 DEPLOYMENT_CONFIG_VALIDATE_JSON=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; json.load(sys.stdin)" 2>&1 ; true)
 if [ "$(echo $DEPLOYMENT_CONFIG_VALIDATE_JSON | grep -c JSONDecodeError)" != "0" ]; then
     echo "error: deployment config is not valid JSON"

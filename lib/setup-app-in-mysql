@@ -57,7 +57,7 @@ if [ "$1" != "is-running-on-server" ]; then
         EMPTY_DB_SCHEMA_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
         scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$MYSQL_EMPTY_SCHEMA_FILE $ADMIN_USERNAME@$SERVER_IP:$EMPTY_DB_SCHEMA_FILENAME_ON_SERVER
     else
-        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER=""
+        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER="-"
     fi
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
@@ -94,7 +94,7 @@ if [ "$DB_EXISTS" != "1" ]; then
     mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "create database $MYSQL_DATABASE; " 2>&1 | \
         grep -vi "password on the command line"
 
-    if [ "$DB_SCHEMA_FILENAME" != "" ]; then
+    if [ "$DB_SCHEMA_FILENAME" != "-" ]; then
         mysql -u root -p"$MYSQL_ROOT_PASSWORD" $MYSQL_DATABASE < "$DB_SCHEMA_FILENAME" 2>&1 | \
             grep -vi "password on the command line"
     fi
@@ -107,7 +107,7 @@ fi
 for APP_SERVER in $APP_HOSTS; do
     ESCAPED_MYSQL_PASSWORD=$(echo $MYSQL_PASSWORD | sed "s/'/\\\'/")
     mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "\
-            grant DELETE, INSERT, SELECT, UPDATE on $MYSQL_DATABASE.* to \
+            grant CREATE, REFERENCES, DROP, DELETE, INSERT, SELECT, UPDATE on $MYSQL_DATABASE.* to \
                 '$MYSQL_USERNAME'@'$APP_SERVER' identified by '"$ESCAPED_MYSQL_PASSWORD"'; \
             flush privileges; " 2>&1 | \
         grep -vi "password on the command line"
