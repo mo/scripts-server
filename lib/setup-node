@@ -37,6 +37,12 @@ fi
 
 CONFIG_FILE=$2
 ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+NODE_VERSION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['node']['version'])")
+
+if [ "$NODE_VERSION" != "8" ] && [ "$NODE_VERSION" != "10" ]; then
+    echo "error: unsupported node version"
+    exit 1
+fi
 
 if [ $EUID -ne 0 ]; then
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
@@ -49,6 +55,8 @@ echo ; echo
 apt-get install -y build-essential
 
 if [ "$(which node)" == "" ]; then
-    curl -sL https://deb.nodesource.com/setup_8.x | bash -
+    curl -sL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash -
     apt-get install -y nodejs
+else
+    echo "node is already on PATH, will skip installation ..."
 fi
