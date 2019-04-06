@@ -42,6 +42,7 @@ APP_DOMAIN_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.lo
 APP_DOMAIN_SANS=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['app'].get('domain_sans', [])))")
 APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
 APP_WEBSERVER_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['haproxy_registration']['port'])")
+APP_CERTBOT_STAGING=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app'].get('certbot_staging', False))")
 
 if [ $EUID -ne 0 ]; then
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
@@ -65,7 +66,12 @@ if [ ! -e "/etc/letsencrypt/live/$APP_DOMAIN_NAME" ]; then
     systemctl stop haproxy
 
     DOMAIN_SANS_PARAMS=$(echo $APP_DOMAIN_SANS | tr ' ' '\n' | xargs -I SAN echo -d SAN | tr '\n' ' ')
-    certbot certonly --standalone -m $ADMIN_EMAIL --agree-tos -n -d $APP_DOMAIN_NAME $DOMAIN_SANS_PARAMS
+    if [ $APP_CERTBOT_STAGING == "True" ]; then
+        MAYBE_STAGING_PARAM="--staging"
+    else
+        MAYBE_STAGING_PARAM=""
+    fi
+    certbot certonly --standalone -m $ADMIN_EMAIL --agree-tos -n -d $APP_DOMAIN_NAME $DOMAIN_SANS_PARAMS $MAYBE_STAGING_PARAM
 
     echo "Concatenating certificates for use in haproxy ..."
     /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates
