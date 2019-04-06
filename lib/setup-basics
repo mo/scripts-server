@@ -79,6 +79,8 @@ augtool set /files/etc/ssh/sshd_config/Port $SSHD_PORT
 
 # The values below are already set in the default ubuntu config, setting anyway just to make sure:
 augtool set /files/etc/ssh/sshd_config/PermitEmptyPasswords "no"
+# UsePrivilegeSeparation was removed entirely from openssh 7.5 (it has been default on for 15 years)
+# https://www.openssh.com/txt/release-7.5
 augtool set /files/etc/ssh/sshd_config/UsePrivilegeSeparation "yes"
 
 systemctl reload sshd
