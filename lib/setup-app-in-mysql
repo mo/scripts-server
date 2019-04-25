@@ -107,7 +107,7 @@ fi
 for APP_SERVER in $APP_HOSTS; do
     ESCAPED_MYSQL_PASSWORD=$(echo $MYSQL_PASSWORD | sed "s/'/\\\'/")
     mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "\
-            grant CREATE, REFERENCES, DROP, DELETE, INSERT, SELECT, UPDATE on $MYSQL_DATABASE.* to \
+            grant CREATE, REFERENCES, DROP, ALTER, DELETE, INSERT, SELECT, UPDATE on $MYSQL_DATABASE.* to \
                 '$MYSQL_USERNAME'@'$APP_SERVER' identified by '"$ESCAPED_MYSQL_PASSWORD"'; \
             flush privileges; " 2>&1 | \
         grep -vi "password on the command line"
