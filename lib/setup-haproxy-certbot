@@ -109,6 +109,8 @@ EOF_MARKER
 mkdir -p /etc/haproxy/frontends/http-main/
 tee /etc/haproxy/frontends/http-main/00-base.cfg >/dev/null <<EOF_MARKER
 bind :::80 v4v6
+reqidel ^X-Forwarded-For:.*
+option forwardfor
 
 redirect scheme https code 301 if !{ ssl_fc }
 EOF_MARKER
@@ -118,6 +120,8 @@ chmod 700 /etc/haproxy/certs/
 mkdir -p /etc/haproxy/frontends/https-main/
 tee /etc/haproxy/frontends/https-main/00-base.cfg >/dev/null <<EOF_MARKER
 bind :::443 v4v6 ssl crt /etc/haproxy/certs/
+reqidel ^X-Forwarded-For:.*
+option forwardfor
 
 EOF_MARKER
 
