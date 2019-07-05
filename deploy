@@ -39,6 +39,7 @@ run-step setup-app-config-file
 run-step setup-app-in-haproxy
 run-step setup-app-in-traefik
 run-step setup-app-in-mysql
+run-step setup-app-in-postgresql
 
 TIME_NOW=$(date +%s)
 SECS_TAKEN=$(($TIME_NOW - $START_TIME))

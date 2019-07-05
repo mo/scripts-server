@@ -1,0 +1,82 @@
+#!/bin/bash
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP [APP_SERVER1 [APP_SERVER2 [APP_SERVER3 ...]]]"
+        echo
+        echo "NOTE: If no APP_SERVERx are specified it assumes the app is running on the same"
+        echo "      machine as the database (i.e. on $SERVER_IP) and it will then allow the"
+        echo "      database user that the application uses to connect from localhost only."
+        echo
+        exit 1
+    fi
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    shift 2
+    APP_HOSTS="$@"
+
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+    APP_POSTGRESQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('postgresql' in json.load(sys.stdin)['app'])")
+    if [ "$APP_POSTGRESQL" != "True" ]; then
+        echo "Skipping application setup in PostgreSQL."
+        exit 0
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    if [ "$MYSQL_EMPTY_SCHEMA_FILE" != "" ]; then
+        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+        scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$MYSQL_EMPTY_SCHEMA_FILE $ADMIN_USERNAME@$SERVER_IP:$EMPTY_DB_SCHEMA_FILENAME_ON_SERVER
+    else
+        EMPTY_DB_SCHEMA_FILENAME_ON_SERVER="-"
+    fi
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $EMPTY_DB_SCHEMA_FILENAME_ON_SERVER $APP_HOSTS ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+    exit 0
+fi
+
+CONFIG_FILE=$2
+DB_SCHEMA_FILENAME=$3
+
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+
+DB_DATABASE_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['postgresql']['database'])")
+DB_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['postgresql']['username'])")
+DB_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['postgresql']['password'])")
+
+if [ $EUID -ne 0 ]; then
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
+fi
+echo ; echo
+
+shift 3
+APP_HOSTS="$@"
+
+user_exists=$(sudo -u postgres psql postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USERNAME}'")
+if [ "$user_exists" != "1" ]; then
+    sudo -u postgres psql -c "CREATE USER ${DB_USERNAME} WITH PASSWORD '"${DB_PASSWORD}"';"
+else
+    echo "NOTE: The user ${DB_USERNAME} already exists, skipping setup."
+fi
+
+db_exists=$(sudo -u postgres psql postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE_NAME}'")
+if [ "$db_exists" != "1" ]; then
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_DATABASE_NAME} OWNER ${DB_USERNAME}"
+else
+    echo "NOTE: The database ${DB_DATABASE_NAME} already exists, skipping setup."
+fi
