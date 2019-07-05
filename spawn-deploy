@@ -7,6 +7,7 @@ if [ "$DEBUG" == "1" ]; then
     set -x
 else
     echo "Run with env DEBUG=1 to see verbose output."
+    sleep 3
 fi
 
 SCRIPT_DIR=$(dirname $0)
