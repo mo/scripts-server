@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # haproxy-config.py
 # Copyright (c) 2008 Finnlabs
@@ -67,13 +67,13 @@ import time
 
 
 def print_usage(program):
-    print "\nThis program creates a HAProxy configuration file from a fixed"
-    print "directory structure. See the comments of this script for details!"
-    print ""
-    print "Usage: %s [-c config_dir] [-o output_file]" % program
-    print ""
-    print "config_dir  defaults to /etc/haproxy"
-    print "output_file defaults to /etc/haproxy/haproxy.cfg"
+    print("\nThis program creates a HAProxy configuration file from a fixed")
+    print("directory structure. See the comments of this script for details!")
+    print("")
+    print("Usage: %s [-c config_dir] [-o output_file]" % program)
+    print("")
+    print("config_dir  defaults to /etc/haproxy")
+    print("output_file defaults to /etc/haproxy/haproxy.cfg")
 
 def exit_with_usage(program):
     print_usage(program)
@@ -157,8 +157,8 @@ def main():
     # parse command line arguments
     try:
         opts,args = getopt.getopt(sys.argv[1:], "c:o:", ["help"])
-    except getopt.GetoptError, err:
-        print str(err) # will print somthing like option -a not recognized"
+    except getopt.GetoptError as err:
+        print(str(err)) # will print somthing like option -a not recognized"
         exit_with_usage(sys.argv[0])
     
     if args:
