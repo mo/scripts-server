@@ -15,7 +15,7 @@ DROPLET_NAME=$2
 MACHINE_IMAGE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['image'])")
 MACHINE_SIZE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['size'])")
 MACHINE_REGION=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['region'])")
-MACHINE_FLOATING_IP=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['floating_ip'])")
+MACHINE_FLOATING_IP=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('floating_ip', ''))")
 
 if [ "$(which doctl)" == "" ]; then
     echo "error: doctl is not installed, cannot create droplets."
