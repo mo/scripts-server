@@ -42,6 +42,12 @@ DROPLET_DETAILS=$(doctl compute droplet create \
     --region $MACHINE_REGION \
     $DROPLET_NAME)
 
+DOCTL_EXIT_CODE=$?
+if [ "$DOCTL_EXIT_CODE" != "0" ]; then
+	echo "error: doctl exit with non-zero exit code: $DOCTL_EXIT_CODE"
+	exit $DOCTL_EXIT_CODE
+fi
+
 DROPLET_ID=$(echo $DROPLET_DETAILS | cut -f 1 -d ' ')
 DROPLET_IPV4=$(echo $DROPLET_DETAILS | cut -f 2 -d ' ')
 
