@@ -71,6 +71,7 @@ DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -
 DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
 
 echo -e "\n------[ sshd ]-----------------------------------------------------------\n"
+add-apt-repository universe
 apt-get install -y augeas-tools
 augtool set /files/etc/ssh/sshd_config/PasswordAuthentication "no"
 augtool set /files/etc/ssh/sshd_config/PermitRootLogin "no"
