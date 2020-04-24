@@ -57,7 +57,7 @@ apt-get install -y build-essential
 
 if [ "$(which node)" == "" ]; then
     curl -sL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash -
-    apt-get install -y nodejs
+    apt-get install -y nodejs npm
 else
     echo "node is already on PATH, will skip installation ..."
 fi
