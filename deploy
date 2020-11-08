@@ -33,6 +33,7 @@ run-step setup-node
 run-step setup-mysql
 run-step setup-cli-utils
 run-step setup-extra-packages
+run-step setup-extra-root-commands
 run-step setup-app-webserver-startup
 run-step setup-app-misc
 run-step setup-app-config-file
@@ -55,7 +56,7 @@ fi
 
 if [ "$PROFILE_STEPS" != "0" ]; then
     echo
-    echo "Time taken for each step:"
+    echo "Time taken for each step (slowest first):"
     (for CP in $PROFILING_CHECKPOINTS; do
         TIMESTAMP=$(echo $CP | cut -f 2 -d :)
         if [ ! -z "$PREV_TIMESTAMP" ]; then
