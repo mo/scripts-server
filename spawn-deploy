@@ -7,7 +7,6 @@ if [ "$DEBUG" == "1" ]; then
     set -x
 else
     echo "Run with env DEBUG=1 to see verbose output."
-    sleep 3
 fi
 
 SCRIPT_DIR=$(dirname $0)
@@ -28,6 +27,9 @@ if [ "$(echo $DEPLOYMENT_CONFIG_VALIDATE_JSON | grep -c JSONDecodeError)" != "0"
     echo "error: deployment config is not valid JSON"
     exit 1
 fi
+
+# Wait a few seconds in case someone just saw the "Run with DEBUG=1 for verbose" suggestion and want to CTRL-C quickly and re-run with DEBUG=1
+sleep 3
 
 SERVER_IP=$($SCRIPT_DIR/lib/create-machine $DEPLOYMENT_CONFIG $MACHINE_NAME)
 $SCRIPT_DIR/deploy $DEPLOYMENT_CONFIG $SERVER_IP
