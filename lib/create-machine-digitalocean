@@ -16,6 +16,7 @@ MACHINE_IMAGE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(jso
 MACHINE_SIZE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['size'])")
 MACHINE_REGION=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['region'])")
 MACHINE_FLOATING_IP=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('floating_ip', ''))")
+MACHINE_DO_AUTH_CONTEXT=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('do_auth_context', ''))")
 
 if [ "$(which doctl)" == "" ]; then
     echo "error: doctl is not installed, cannot create droplets."
@@ -30,6 +31,15 @@ elif [ "$MACHINE_REGION" == "" ]; then
     echo "error: machine.region must be set in deployment config"
     exit 1
 fi
+
+if [ "$MACHINE_DO_AUTH_CONTEXT" != "" ]; then
+    if [ "$(doctl auth list | grep -c $MACHINE_DO_AUTH_CONTEXT)" == "0" ]; then
+        exit "error: machine.do_auth_context specifies unknown auth context \"$MACHINE_DO_AUTH_CONTEXT\""
+        exit 1
+    fi
+fi
+
+echo "Will spawn droplet using auth context: $(doctl auth list | grep current)" >&2
 
 DROPLET_DETAILS=$(doctl compute droplet create \
     --no-header \
