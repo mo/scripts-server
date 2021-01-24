@@ -26,7 +26,7 @@ run-step() {
 
 START_TIME=$(date +%s)
 
-run-step setup-admin-account
+run-step setup-admin-accounts
 run-step setup-basics
 run-step setup-haproxy-certbot
 run-step setup-node

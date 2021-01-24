@@ -13,7 +13,7 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     INSTALL_CLI_UTILS=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('cli-utils' in json.load(sys.stdin))")
     if [ "$INSTALL_CLI_UTILS" != "True" ]; then
@@ -37,7 +37,7 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 
 if [ $EUID -ne 0 ]; then
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"

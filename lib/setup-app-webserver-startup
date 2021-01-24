@@ -13,7 +13,7 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
 
     SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
@@ -35,7 +35,7 @@ fi
 
 CONFIG_FILE=$2
 UPLOADED_PUBKEY_FILENAME=$3
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
 APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['exec'])")
 APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")

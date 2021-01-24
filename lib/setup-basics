@@ -23,7 +23,7 @@ if [ "$1" != "is-running-on-server" ]; then
     CONFIG_FILENAME_ON_SERVER=$(ssh $SERVER_IP mktemp)
     scp -qp $DEPLOYMENT_CONFIG_FILE $SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
-    ADMIN_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    ADMIN_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP \
         "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
@@ -44,7 +44,7 @@ if [ "$INSTALL_SMTP" == "True" ]; then
     SMTP_AUTH_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['smtp']['auth']['password'])")
 fi
 ADMIN_EMAIL=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_email'])")
-ADMIN_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 
 if [ $EUID -ne 0 ]; then
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"

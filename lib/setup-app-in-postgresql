@@ -20,7 +20,7 @@ if [ "$1" != "is-running-on-server" ]; then
     shift 2
     APP_HOSTS="$@"
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     APP_POSTGRESQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('postgresql' in json.load(sys.stdin)['app'])")
     if [ "$APP_POSTGRESQL" != "True" ]; then
@@ -52,7 +52,7 @@ fi
 CONFIG_FILE=$2
 DB_SCHEMA_FILENAME=$3
 
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 
 DB_DATABASE_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['postgresql']['database'])")
 DB_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['postgresql']['username'])")

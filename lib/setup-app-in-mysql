@@ -38,7 +38,7 @@ if [ "$1" != "is-running-on-server" ]; then
     shift 2
     APP_HOSTS="$@"
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_username'])")
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     APP_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin)['app'])")
     if [ "$APP_MYSQL" != "True" ]; then
@@ -71,7 +71,7 @@ fi
 CONFIG_FILE=$2
 DB_SCHEMA_FILENAME=$3
 
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_password'])")
+ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 MYSQL_ROOT_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['mysql']['root_password'])")
 
 MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['database'])")
