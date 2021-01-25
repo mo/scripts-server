@@ -132,11 +132,9 @@ EOF_MARKER
 /usr/local/sbin/haproxy-config.py
 
 if [ "$(which certbot)" == "" ]; then
-    apt-get update
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:certbot/certbot
-    apt-get update
-    apt-get install -y certbot
+    snap install core
+    snap refresh core
+    snap install --classic certbot
 fi
 
 # certbot will store .pem files for both certificate and private key under /etc/letsencrypt/live/
