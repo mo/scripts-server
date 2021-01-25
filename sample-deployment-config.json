@@ -6,8 +6,18 @@
         "region": "ams3",
         "floating_ip": "1.2.3.4 <-- create a floating ip at digital ocean and enter it here"
     },
-    "admin_username": "admin username, typically your usual username so you can type 'ssh host' instead of 'ssh something@host'",
-    "admin_password": "password of admin user, will be used for sudo only",
+    "admin_accounts": [
+      {
+        "username": "person1",
+        "password": "person1password",
+        "public_key_filename": "data/pk_person1_public_ssh_key.pub"
+      },
+      {
+        "username": "person2",
+        "password": "person2password",
+        "public_key_filename": "data/pk_person2_public_ssh_key.pub"
+      },
+    ],
     "admin_email": "your email, will be used to certbot admin stuff and for notifications when security updates are installed",
     "sshd_port": 22,
     "smtp": {
@@ -28,6 +38,8 @@
     "comment": "if the 'cli-utils' util key is present, a few extra cli utils is installed",
     "cli-utils": {},
 
+    "extra_packages": ["postgresql-12", "unp", "net-tools", "tree"],
+
     "app": {
         "id": "some app id you invent, stick to lowercase, numbers and underscore because this id is used in many different contexts",
         "description": "description for systemd service file",
@@ -47,6 +59,11 @@
             "database": "app_database_name",
             "username": "app_db_username",
             "password": "generate an app db password and put it here"
+        },
+        "postgresql": {
+          "database": "app_database_name",
+          "username": "app_db_username",
+          "password": "generate an app postgres db password and put it here"
         },
         "config_file": {
             "template": "data/config.json.template",
