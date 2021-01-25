@@ -59,8 +59,10 @@ apt-get install -y haproxy
 if [ ! -f "/etc/haproxy/dhparams2048.pem" ]; then
     openssl dhparam -out /etc/haproxy/dhparams2048.pem 2048
     chmod 600 /etc/haproxy/dhparams2048.pem
-    shred $HOME/.rnd
-    rm -f $HOME/.rnd
+    if [ -e "$HOME/.rnd" ]; then
+        shred $HOME/.rnd
+        rm -f $HOME/.rnd
+    fi
 fi
 
 mkdir -p /etc/haproxy/global/
