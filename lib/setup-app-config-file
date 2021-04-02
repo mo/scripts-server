@@ -5,7 +5,7 @@ if [ "$DEBUG" == "1" ]; then
 fi
 
 if [ "$1" != "is-running-on-server" ]; then
-    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    echo -e "\n\n----[ $(basename $0) ]------------------------------------------"
     if [ "$2" == "" ] || [ "$1" == "--help" ]; then
         echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
         exit 1

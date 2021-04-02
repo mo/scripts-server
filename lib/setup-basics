@@ -71,7 +71,7 @@ apt-get autoremove -y
 DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
 DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
 
-echo -e "\n------[ sshd ]-----------------------------------------------------------\n"
+echo -e "\n----[ sshd ]-----------------------------------------------------------\n"
 add-apt-repository universe
 apt-get install -y augeas-tools
 augtool set /files/etc/ssh/sshd_config/PasswordAuthentication "no"
@@ -87,7 +87,7 @@ augtool set /files/etc/ssh/sshd_config/UsePrivilegeSeparation "yes"
 
 systemctl reload sshd
 
-echo -e "\n------[ ufw ]------------------------------------------------------------\n"
+echo -e "\n----[ ufw ]------------------------------------------------------------\n"
 ufw default deny incoming
 ufw allow $SSHD_PORT
 ufw allow http
@@ -95,7 +95,7 @@ ufw allow https
 ufw --force enable
 ufw status verbose
 
-echo -e "\n------[ unattended-upgrades ]--------------------------------------------\n"
+echo -e "\n----[ unattended-upgrades ]--------------------------------------------\n"
 
 apt-get install -y unattended-upgrades apt-listchanges
 tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null <<EOF_MARKER
@@ -138,7 +138,7 @@ if [ "$INSTALL_SMTP" != "True" ]; then
     exit 0
 fi
 
-echo -e "\n------[ ssmtp ]----------------------------------------------------------\n"
+echo -e "\n----[ ssmtp ]----------------------------------------------------------\n"
 
 apt-get install -y ssmtp
 
