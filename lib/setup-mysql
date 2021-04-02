@@ -13,7 +13,8 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
+    DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
+    ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     INSTALL_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin))")
     if [ "$INSTALL_MYSQL" != "True" ]; then
@@ -37,10 +38,10 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 MYSQL_ROOT_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['mysql']['root_password'])")
 
 if [ $EUID -ne 0 ]; then
+    ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
     exit 0
 fi

@@ -13,7 +13,8 @@ if [ "$1" != "is-running-on-server" ]; then
     CONFIG_FILE=$1
     SERVER_IP=$2
 
-    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['username'])")
+    DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
+    ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     TRAEFIK_REGISTRATION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('traefik_registration' in json.load(sys.stdin)['app'])")
     if [ "$TRAEFIK_REGISTRATION" != "True" ]; then
@@ -36,13 +37,13 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][0]['password'])")
 ADMIN_EMAIL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_email'])")
 APP_DOMAIN_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['domain'])")
 APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
 APP_WEBSERVER_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['traefik_registration']['port'])")
 
 if [ $EUID -ne 0 ]; then
+    ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
     echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
     exit 0
 fi
