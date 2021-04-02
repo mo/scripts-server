@@ -4,36 +4,82 @@ if [ "$DEBUG" == "1" ]; then
     set -x
 fi
 
-if [ "$2" == "" ]; then
-    echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
-    exit 1
+if [ "$1" != "is-running-on-server" ]; then
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    CONFIG_FILE=$1
+    SERVER_IP=$2
+    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+        exit 1
+    fi
+
+    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
+
+    if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 -p $SSHD_PORT root@$SERVER_IP 'echo online')" == "online" ]; then
+        # We can ssh in directly as root using the default key (i.e. this is a newly spawned machine)
+        ADMIN_USERNAME=root
+    else
+        # This is not a newly spawned machine, figure out which existing admin account to
+        # use via the regular method (and use that account to create any additional admin
+        # accounts that might have been added to the deploy ment config file).
+        DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
+        ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
+    fi
+
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+
+    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
+        shred -uz $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $CONFIG_FILENAME_ON_SERVER ; \
+        rm -f $SCRIPT_FILENAME_ON_SERVER"
+
+    # Now that we're sure all admin accounts exists, we'll loop through them again
+    # and make sure the .ssh/authorized_keys file of each account has the right key in it.
+    ADMIN_ACCOUNT_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['admin_accounts']))")
+    for ACCOUNT_IDX in $(seq 0 $(($ADMIN_ACCOUNT_COUNT - 1))); do
+
+        ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['username'])")
+        ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['password'])")
+        ADMIN_PUBLIC_KEY_FILENAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['public_key_filename'])")
+
+        echo "Updating .ssh/authorized_keys for user $ADMIN_USERNAME ..."
+        scp -qp $ADMIN_PUBLIC_KEY_FILENAME root@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+
+    done
+
+    exit 0
 fi
 
-DEPLOYMENT_CONFIG_FILE="$1"
-SERVER_IP="$2"
+CONFIG_FILE=$2
 
-if [ ! -e "$DEPLOYMENT_CONFIG_FILE" ]; then
-    echo "error: deployment config $DEPLOYMENT_CONFIG_FILE does not exist."
-    exit 1
+if [ $EUID -ne 0 ]; then
+    ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
+    echo $ADMIN_PASSWORD | sudo -S "$0" "$@"
+    exit 0
 fi
+echo ; echo
 
-SSHD_PORT=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
-
-ADMIN_ACCOUNT_COUNT=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['admin_accounts']))")
+ADMIN_ACCOUNT_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['admin_accounts']))")
 
 for ACCOUNT_IDX in $(seq 0 $(($ADMIN_ACCOUNT_COUNT - 1))); do
 
-    ADMIN_USERNAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['username'])")
-    ADMIN_PASSWORD=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['password'])")
-    ADMIN_PUBLIC_KEY_FILENAME=$(cat $DEPLOYMENT_CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['public_key_filename'])")
+    ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['username'])")
+    ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['password'])")
 
-    if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP 'echo online')" != "online" ]; then
-        # Admin account doesn't exist yet, create it.
-        ssh -q -t -o StrictHostKeyChecking=no root@$SERVER_IP "useradd -m -p \$(openssl passwd -1 $ADMIN_PASSWORD) -s /bin/bash -G sudo $ADMIN_USERNAME"
-
-        ssh root@$SERVER_IP "mkdir -p /home/$ADMIN_USERNAME/.ssh"
-        scp -qp $ADMIN_PUBLIC_KEY_FILENAME root@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
-        ssh root@$SERVER_IP "chown -R $ADMIN_USERNAME:$ADMIN_USERNAME /home/$ADMIN_USERNAME/.ssh ; chmod 700 /home/$ADMIN_USERNAME/.ssh ; chmod 600 /home/$ADMIN_USERNAME/.ssh/authorized_keys"
+    if id "$ADMIN_USERNAME" &>/dev/null; then
+        echo "Account $ADMIN_USERNAME already exists, no need to call 'useradd'."
+    else
+        useradd -m -p $(openssl passwd -1 $ADMIN_PASSWORD) -s /bin/bash -G sudo $ADMIN_USERNAME
     fi
+    mkdir -p /home/$ADMIN_USERNAME/.ssh
+    touch /home/$ADMIN_USERNAME/.ssh/authorized_keys
+    chown -R $ADMIN_USERNAME:$ADMIN_USERNAME /home/$ADMIN_USERNAME/.ssh
+    chmod 700 /home/$ADMIN_USERNAME/.ssh
+    chmod 600 /home/$ADMIN_USERNAME/.ssh/authorized_keys
 
 done
