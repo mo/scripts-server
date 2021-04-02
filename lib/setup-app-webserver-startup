@@ -23,19 +23,28 @@ if [ "$1" != "is-running-on-server" ]; then
     CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
-    PUBKEY_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
-    scp -qp -P $SSHD_PORT $HOME/.ssh/id_rsa.pub $ADMIN_USERNAME@$SERVER_IP:$PUBKEY_FILENAME_ON_SERVER
+    PUBKEY_FILENAMES=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['app'].get('public_key_filenames', [])))")
+    if [ "$PUBKEY_FILENAMES" == "" ]; then
+        PUBKEY_FILENAMES=$HOME/.ssh/id_rsa.pub
+    fi
+    CONCATENATED_PUBKEYS_FILENAME_LOCAL=$(mktemp)
+    cat $PUBKEY_FILENAMES > $CONCATENATED_PUBKEYS_FILENAME_LOCAL
+    PUBKEYS_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONCATENATED_PUBKEYS_FILENAME_LOCAL $ADMIN_USERNAME@$SERVER_IP:$PUBKEYS_FILENAME_ON_SERVER
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
-        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $PUBKEY_FILENAME_ON_SERVER ; \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $PUBKEYS_FILENAME_ON_SERVER ; \
         shred -uz $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $CONFIG_FILENAME_ON_SERVER ; \
-        rm -f $SCRIPT_FILENAME_ON_SERVER"
+        rm -f $SCRIPT_FILENAME_ON_SERVER ; \
+        rm -f $PUBKEYS_FILENAME_ON_SERVER"
+
+    rm -f $CONCATENATED_PUBKEYS_FILENAME_LOCAL
     exit 0
 fi
 
 CONFIG_FILE=$2
-UPLOADED_PUBKEY_FILENAME=$3
+UPLOADED_CONCATENATED_PUBKEYS_FILENAME=$3
 APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
 APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['exec'])")
 APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")
@@ -88,7 +97,12 @@ mkdir -p /home/$APP_ID/.ssh
 chown $APP_ID:$APP_ID /home/$APP_ID/.ssh
 chmod 700 /home/$APP_ID/.ssh
 if [ ! -e "/home/$APP_ID/.ssh/authorized_keys" ]; then
-    mv $UPLOADED_PUBKEY_FILENAME /home/$APP_ID/.ssh/authorized_keys
-    chown $APP_ID:$APP_ID /home/$APP_ID/.ssh/authorized_keys
-    chmod 600 /home/$APP_ID/.ssh/authorized_keys
+    touch /home/$APP_ID/.ssh/authorized_keys
 fi
+
+cat $UPLOADED_CONCATENATED_PUBKEYS_FILENAME >> /home/$APP_ID/.ssh/authorized_keys
+cat /home/$APP_ID/.ssh/authorized_keys | sort | uniq > /home/$APP_ID/.ssh/authorized_keys.uniq
+mv /home/$APP_ID/.ssh/authorized_keys.uniq /home/$APP_ID/.ssh/authorized_keys
+
+chown $APP_ID:$APP_ID /home/$APP_ID/.ssh/authorized_keys
+chmod 600 /home/$APP_ID/.ssh/authorized_keys
