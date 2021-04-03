@@ -24,6 +24,12 @@ run-step() {
     DEBUG=$DEBUG $SCRIPT_DIR/lib/$STEP_NAME $DEPLOYMENT_CONFIG $SERVER_IP
 }
 
+run-app-deploy-step() {
+    APP_ID=$1
+    PROFILING_CHECKPOINTS="$PROFILING_CHECKPOINTS deploy-$APP_ID:$(date +%s) "
+    DEBUG=$DEBUG $SCRIPT_DIR/lib/deploy-app $DEPLOYMENT_CONFIG $APP_ID $SERVER_IP
+}
+
 START_TIME=$(date +%s)
 
 run-step setup-admin-accounts
@@ -34,13 +40,15 @@ run-step setup-mysql
 run-step setup-cli-utils
 run-step setup-extra-packages
 run-step setup-extra-root-commands
-run-step setup-app-webserver-startup
-run-step setup-app-misc
-run-step setup-app-config-file
-run-step setup-app-in-haproxy
-run-step setup-app-in-traefik
-run-step setup-app-in-mysql
-run-step setup-app-in-postgresql
+
+if [ "$APP_ID" == "" ]; then
+    APP_IDS_TO_DEPLOY=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['apps'].keys()))")
+else
+    APP_IDS_TO_DEPLOY=$APP_ID
+fi
+for APP_ID in $APP_IDS_TO_DEPLOY; do
+    run-app-deploy-step $APP_ID
+done
 
 TIME_NOW=$(date +%s)
 SECS_TAKEN=$(($TIME_NOW - $START_TIME))

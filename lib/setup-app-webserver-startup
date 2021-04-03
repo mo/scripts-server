@@ -7,9 +7,10 @@ fi
 if [ "$1" != "is-running-on-server" ]; then
     echo -e "\n\n----[ $(basename $0) ]------------------------------------"
     CONFIG_FILE=$1
-    SERVER_IP=$2
-    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
-        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+    APP_ID=$2
+    SERVER_IP=$3
+    if [ "$3" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE APP_ID SERVER_IP"
         exit 1
     fi
 
@@ -23,7 +24,7 @@ if [ "$1" != "is-running-on-server" ]; then
     CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
-    PUBKEY_FILENAMES=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['app'].get('public_key_filenames', [])))")
+    PUBKEY_FILENAMES=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['apps']['"$APP_ID"'].get('public_key_filenames', [])))")
     if [ "$PUBKEY_FILENAMES" == "" ]; then
         PUBKEY_FILENAMES=$HOME/.ssh/id_rsa.pub
     fi
@@ -33,7 +34,7 @@ if [ "$1" != "is-running-on-server" ]; then
     scp -qp -P $SSHD_PORT $CONCATENATED_PUBKEYS_FILENAME_LOCAL $ADMIN_USERNAME@$SERVER_IP:$PUBKEYS_FILENAME_ON_SERVER
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
-        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $PUBKEYS_FILENAME_ON_SERVER ; \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_ID $PUBKEYS_FILENAME_ON_SERVER ; \
         shred -uz $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $SCRIPT_FILENAME_ON_SERVER ; \
@@ -44,12 +45,12 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-UPLOADED_CONCATENATED_PUBKEYS_FILENAME=$3
-APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
-APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['exec'])")
-APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")
-APP_DESCRIPTION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['description'])")
-APP_ROOTLESS_RESTART=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app'].get('rootless_restart', False))")
+APP_ID=$3
+UPLOADED_CONCATENATED_PUBKEYS_FILENAME=$4
+APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['exec'])")
+APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['working_directory'])")
+APP_DESCRIPTION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['description'])")
+APP_ROOTLESS_RESTART=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('rootless_restart', False))")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")

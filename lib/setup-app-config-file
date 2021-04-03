@@ -6,22 +6,23 @@ fi
 
 if [ "$1" != "is-running-on-server" ]; then
     echo -e "\n\n----[ $(basename $0) ]------------------------------------------"
-    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
-        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
+    if [ "$3" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE APP_ID SERVER_IP"
         exit 1
     fi
     CONFIG_FILE=$1
-    SERVER_IP=$2
+    APP_ID=$2
+    SERVER_IP=$3
 
     DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
     ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
-    INSTALL_APP_CONFIG_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('config_file' in json.load(sys.stdin)['app'])")
+    INSTALL_APP_CONFIG_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('config_file' in json.load(sys.stdin)['apps']['"$APP_ID"'])")
     if [ "$INSTALL_APP_CONFIG_FILE" != "True" ]; then
         echo "Skipping installation of application config file."
         exit 0
     fi
-    APP_CONFIG_TEMPLATE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file']['template'])")
+    APP_CONFIG_TEMPLATE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['config_file']['template'])")
 
     SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
@@ -33,7 +34,7 @@ if [ "$1" != "is-running-on-server" ]; then
     scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$APP_CONFIG_TEMPLATE $ADMIN_USERNAME@$SERVER_IP:$APP_CONFIG_TEMPLATE_ON_SERVER
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
-        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_CONFIG_TEMPLATE_ON_SERVER ; \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_ID $APP_CONFIG_TEMPLATE_ON_SERVER ; \
         shred -uz $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $SCRIPT_FILENAME_ON_SERVER"
@@ -41,20 +42,20 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-APP_CONFIG_TEMPLATE=$3
-APP_ID=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['id'])")
-APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['working_directory'])")
-APP_CONFIG_FILE_DESTINATION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file']['destination'])")
-APP_CONFIG_FILE_FORMAT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['config_file'].get('format', ''))")
-APP_MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('database', ''))")
-APP_MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('username', ''))")
-APP_MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('mysql', {}).get('password', ''))")
-APP_POSTGRESQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('postgresql', {}).get('database', ''))")
-APP_POSTGRESQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('postgresql', {}).get('username', ''))")
-APP_POSTGRESQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('postgresql', {}).get('password', ''))")
-APP_EXTRA_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('extra_directory', ''))")
-APP_HAPROXY_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('haproxy_registration', {}).get('port', ''))")
-APP_TRAEFIK_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('app', {}).get('traefik_registration', {}).get('port', ''))")
+APP_ID=$3
+APP_CONFIG_TEMPLATE=$4
+APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['working_directory'])")
+APP_CONFIG_FILE_DESTINATION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['config_file']['destination'])")
+APP_CONFIG_FILE_FORMAT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['config_file'].get('format', ''))")
+APP_MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('mysql', {}).get('database', ''))")
+APP_MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('mysql', {}).get('username', ''))")
+APP_MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('mysql', {}).get('password', ''))")
+APP_POSTGRESQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('postgresql', {}).get('database', ''))")
+APP_POSTGRESQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('postgresql', {}).get('username', ''))")
+APP_POSTGRESQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('postgresql', {}).get('password', ''))")
+APP_EXTRA_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('extra_directory', ''))")
+APP_HAPROXY_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('haproxy_registration', {}).get('port', ''))")
+APP_TRAEFIK_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('traefik_registration', {}).get('port', ''))")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")

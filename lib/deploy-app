@@ -1,0 +1,31 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(dirname $0)
+
+if [ "$DEBUG" == "1" ]; then
+    set -x
+fi
+
+if [ "$3" == "" ]; then
+	echo "usage: $(basename $0) DEPLOYMENT_CONFIG APP_ID SERVER_IP"
+	exit 1
+fi
+DEPLOYMENT_CONFIG=$1
+APP_ID=$2
+SERVER_IP=$3
+
+echo -e "\n\n\n====[ installing app: $APP_ID ]=====================================================\n"
+
+run-app-step() {
+    STEP_NAME=$1
+    export DEBUG
+    $SCRIPT_DIR/$STEP_NAME $DEPLOYMENT_CONFIG $APP_ID $SERVER_IP
+}
+
+run-app-step setup-app-webserver-startup
+run-app-step setup-app-misc
+run-app-step setup-app-config-file
+run-app-step setup-app-in-haproxy
+run-app-step setup-app-in-traefik
+run-app-step setup-app-in-mysql
+run-app-step setup-app-in-postgresql

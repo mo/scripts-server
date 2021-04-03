@@ -24,8 +24,8 @@ fi
 
 if [ "$1" != "is-running-on-server" ]; then
     echo -e "\n\n----[ $(basename $0) ]---------------------------------------------"
-    if [ "$2" == "" ] || [ "$1" == "--help" ]; then
-        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP [APP_SERVER1 [APP_SERVER2 [APP_SERVER3 ...]]]"
+    if [ "$3" == "" ] || [ "$1" == "--help" ]; then
+        echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE APP_ID SERVER_IP [APP_SERVER1 [APP_SERVER2 [APP_SERVER3 ...]]]"
         echo
         echo "NOTE: If no APP_SERVERx are specified it assumes the app is running on the same"
         echo "      machine as the database (i.e. on $SERVER_IP) and it will then allow the"
@@ -34,19 +34,20 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
     CONFIG_FILE=$1
-    SERVER_IP=$2
+    APP_ID=$2
+    SERVER_IP=$3
     shift 2
     APP_HOSTS="$@"
 
     DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
     ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
     SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
-    APP_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin)['app'])")
+    APP_MYSQL=$(cat $CONFIG_FILE | python3 -c "import sys, json; print('mysql' in json.load(sys.stdin)['apps']['"$APP_ID"'])")
     if [ "$APP_MYSQL" != "True" ]; then
         echo "Skipping application setup in MySQL."
         exit 0
     fi
-    MYSQL_EMPTY_SCHEMA_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql'].get('empty_schema_file', ''))")
+    MYSQL_EMPTY_SCHEMA_FILE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['mysql'].get('empty_schema_file', ''))")
 
     SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
@@ -62,7 +63,7 @@ if [ "$1" != "is-running-on-server" ]; then
     fi
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
-        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $EMPTY_DB_SCHEMA_FILENAME_ON_SERVER $APP_HOSTS ; \
+        "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_ID $EMPTY_DB_SCHEMA_FILENAME_ON_SERVER $APP_HOSTS ; \
         shred -uz $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $SCRIPT_FILENAME_ON_SERVER"
@@ -70,13 +71,14 @@ if [ "$1" != "is-running-on-server" ]; then
 fi
 
 CONFIG_FILE=$2
-DB_SCHEMA_FILENAME=$3
+APP_ID=$3
+DB_SCHEMA_FILENAME=$4
 
 MYSQL_ROOT_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['mysql']['root_password'])")
 
-MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['database'])")
-MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['username'])")
-MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['app']['mysql']['password'])")
+MYSQL_DATABASE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['mysql']['database'])")
+MYSQL_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['mysql']['username'])")
+MYSQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['mysql']['password'])")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
@@ -85,7 +87,7 @@ if [ $EUID -ne 0 ]; then
 fi
 echo ; echo
 
-shift 3
+shift 4
 APP_HOSTS="$@"
 
 DB_EXISTS=$(mysql -u root -p"$MYSQL_ROOT_PASSWORD" -s -N -e "SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='"$MYSQL_DATABASE"'" 2>&1 | grep -vi "password on the command line")
