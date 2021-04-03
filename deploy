@@ -57,13 +57,17 @@ fi
 if [ "$PROFILE_STEPS" != "0" ]; then
     echo
     echo "Time taken for each step (slowest first):"
-    (for CP in $PROFILING_CHECKPOINTS; do
-        TIMESTAMP=$(echo $CP | cut -f 2 -d :)
-        if [ ! -z "$PREV_TIMESTAMP" ]; then
-            SECS_TAKEN=$(($TIMESTAMP-$PREV_TIMESTAMP))
-            echo "it took $SECS_TAKEN seconds to run $PREV_NAME"
-        fi
-        PREV_TIMESTAMP=$TIMESTAMP
-        PREV_NAME=$(echo $CP | cut -f 1 -d :)
-    done) | sort -k3,3 -rn
+    (
+        for CP in $PROFILING_CHECKPOINTS; do
+            TIMESTAMP=$(echo $CP | cut -f 2 -d :)
+            if [ ! -z "$PREV_TIMESTAMP" ]; then
+                SECS_TAKEN=$(($TIMESTAMP-$PREV_TIMESTAMP))
+                echo "it took $SECS_TAKEN seconds to run $PREV_NAME"
+            fi
+            PREV_TIMESTAMP=$TIMESTAMP
+            PREV_NAME=$(echo $CP | cut -f 1 -d :)
+        done
+        SECS_TAKEN=$(($TIME_NOW-$PREV_TIMESTAMP))
+        echo "it took $SECS_TAKEN seconds to run $PREV_NAME"
+    ) | sort -k3,3 -rn
 fi
