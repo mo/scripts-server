@@ -13,26 +13,32 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
 
+    ADMIN_ACCOUNT_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin).get('admin_accounts', [])))")
+    if [ "$ADMIN_ACCOUNT_COUNT" == "0" ]; then
+        echo "error: deployment config contains no 'admin_accounts' key, it must contain at least one account."
+        exit 1
+    fi
+
     if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 root@$SERVER_IP 'echo online')" == "online" ]; then
         # We can ssh in directly as root using the default key (i.e. this is a newly spawned machine)
-        ADMIN_USERNAME=root
+        PRIMARY_ADMIN_USERNAME=root
         SSHD_PORT=22
     else
         # This is not a newly spawned machine, figure out which existing admin account to
         # use via the regular method (and use that account to create any additional admin
         # accounts that might have been added to the deploy ment config file).
         DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
-        ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
+        PRIMARY_ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
         SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     fi
 
-    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
-    scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
+    SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $PRIMARY_ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $0 $PRIMARY_ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
 
-    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
-    scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
+    CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $PRIMARY_ADMIN_USERNAME@$SERVER_IP mktemp)
+    scp -qp -P $SSHD_PORT $CONFIG_FILE $PRIMARY_ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
-    LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
+    LC_ALL=en_US.UTF-8 ssh -q -t $PRIMARY_ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
         "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER ; \
         shred -uz $CONFIG_FILENAME_ON_SERVER ; \
         rm -f $CONFIG_FILENAME_ON_SERVER ; \
@@ -45,10 +51,14 @@ if [ "$1" != "is-running-on-server" ]; then
 
         ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['username'])")
         ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['password'])")
-        ADMIN_PUBLIC_KEY_FILENAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['public_key_filename'])")
+        ADMIN_PUBLIC_KEY_FILENAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX].get('public_key_filename', ''))")
+        if [ "$ADMIN_PUBLIC_KEY_FILENAME" == "" ]; then
+            echo "error: admin account \"$ADMIN_USERNAME\" has no \"public_key_filename\" defined."
+            exit 1
+        fi
 
         echo "Updating .ssh/authorized_keys for user $ADMIN_USERNAME ..."
-        scp -qp $ADMIN_PUBLIC_KEY_FILENAME root@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+        scp -qp -P $SSHD_PORT $ADMIN_PUBLIC_KEY_FILENAME $PRIMARY_ADMIN_USERNAME@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
 
     done
 
