@@ -4,6 +4,8 @@ if [ "$DEBUG" == "1" ]; then
     set -x
 fi
 
+echo -e "\n----[ setup-basics ]------------------------------------------------------------\n"
+
 if [ "$1" != "is-running-on-server" ]; then
     if [ "$2" == "" ] || [ "$1" == "--help" ]; then
         echo "usage: $(basename $0) DEPLOYMENT_CONFIG_FILE SERVER_IP"
