@@ -13,17 +13,17 @@ if [ "$1" != "is-running-on-server" ]; then
         exit 1
     fi
 
-    SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
-
-    if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 -p $SSHD_PORT root@$SERVER_IP 'echo online')" == "online" ]; then
+    if [ "$(ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=4 -o ConnectionAttempts=1 root@$SERVER_IP 'echo online')" == "online" ]; then
         # We can ssh in directly as root using the default key (i.e. this is a newly spawned machine)
         ADMIN_USERNAME=root
+        SSHD_PORT=22
     else
         # This is not a newly spawned machine, figure out which existing admin account to
         # use via the regular method (and use that account to create any additional admin
         # accounts that might have been added to the deploy ment config file).
         DEFAULT_ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['username'])")
         ADMIN_USERNAME=${ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}
+        SSHD_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['sshd_port'])")
     fi
 
     SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
