@@ -42,7 +42,7 @@ run-step setup-extra-packages
 run-step setup-extra-root-commands
 
 if [ "$APP_ID" == "" ]; then
-    APP_IDS_TO_DEPLOY=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['apps'].keys()))")
+    APP_IDS_TO_DEPLOY=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin).get('apps', {}).keys()))")
 else
     APP_IDS_TO_DEPLOY=$APP_ID
 fi
