@@ -37,7 +37,7 @@ if [ "$MACHINE_DO_AUTH_CONTEXT" != "" ]; then
         echo "error: machine.do_auth_context specifies unknown auth context \"$MACHINE_DO_AUTH_CONTEXT\"" >&2
         exit 1
     fi
-    doctl auth switch --context $MACHINE_DO_AUTH_CONTEXT >&2 | grep -v "Now using context"
+    doctl auth switch --context $MACHINE_DO_AUTH_CONTEXT | grep -v "Now using context" >&2
     if [ "$(doctl auth list | grep '(current)' | grep -c $MACHINE_DO_AUTH_CONTEXT)" == "0" ]; then
         echo "error: failed to set machine.do_auth_context (\"$MACHINE_DO_AUTH_CONTEXT\") as the current auth context" >&2
         exit 1
