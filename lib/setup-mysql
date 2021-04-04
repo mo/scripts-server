@@ -5,7 +5,7 @@ if [ "$DEBUG" == "1" ]; then
 fi
 
 if [ "$1" != "is-running-on-server" ]; then
-    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------"
+    echo -e "\n\n----[ $(basename $0) ]----------------------------------------------------"
     CONFIG_FILE=$1
     SERVER_IP=$2
     if [ "$2" == "" ] || [ "$1" == "--help" ]; then
