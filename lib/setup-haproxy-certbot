@@ -144,6 +144,8 @@ tee /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates >/dev/null <<EOF
 #!/bin/sh
 systemctl stop haproxy
 # NOTE: Also inspect log at: /var/log/letsencrypt/letsencrypt.log
+#       As well as older logs at: /var/log/letsencrypt/letsencrypt.log.1 etc etc
+sleep 2
 certbot -q renew 2>&1 | sudo tee -a /var/log/certbot-auto-renewal.log
 mkdir -p /etc/haproxy/certs
 ALL_DOMAINS=\$(find /etc/letsencrypt/live/ -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | tr '\n' ' ')
