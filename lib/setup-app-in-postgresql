@@ -58,6 +58,7 @@ DB_SCHEMA_FILENAME=$4
 DB_DATABASE_NAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['postgresql']['database'])")
 DB_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['postgresql']['username'])")
 DB_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['postgresql']['password'])")
+DB_EXTENSIONS=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['apps']['"$APP_ID"']['postgresql'].get('extensions', [])))")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
@@ -79,7 +80,10 @@ fi
 db_exists=$(sudo -u postgres psql postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE_NAME}'")
 if [ "$db_exists" != "1" ]; then
     sudo -u postgres psql -c "CREATE DATABASE ${DB_DATABASE_NAME} OWNER ${DB_USERNAME}"
-    sudo -u postgres psql "${DB_DATABASE_NAME}" -c"CREATE EXTENSION IF NOT EXISTS citext;"
 else
     echo "NOTE: The database ${DB_DATABASE_NAME} already exists, skipping setup."
 fi
+
+for EXT in $DB_EXTENSIONS; do
+    sudo -u postgres psql "${DB_DATABASE_NAME}" -c"CREATE EXTENSION IF NOT EXISTS $EXT;"
+done
