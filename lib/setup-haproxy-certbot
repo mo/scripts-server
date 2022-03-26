@@ -113,7 +113,7 @@ EOF_MARKER
 mkdir -p /etc/haproxy/frontends/http-main/
 tee /etc/haproxy/frontends/http-main/00-base.cfg >/dev/null <<EOF_MARKER
 bind :::80 v4v6
-reqidel ^X-Forwarded-For:.*
+http-request del-header x-forwarded-for
 option forwardfor
 
 redirect scheme https code 301 if !{ ssl_fc }
@@ -124,7 +124,7 @@ chmod 700 /etc/haproxy/certs/
 mkdir -p /etc/haproxy/frontends/https-main/
 tee /etc/haproxy/frontends/https-main/00-base.cfg >/dev/null <<EOF_MARKER
 bind :::443 v4v6 ssl crt /etc/haproxy/certs/
-reqidel ^X-Forwarded-For:.*
+http-request del-header x-forwarded-for
 option forwardfor
 
 EOF_MARKER
@@ -145,7 +145,7 @@ tee /etc/cron.weekly/use-certbot-to-auto-renew-all-certificates >/dev/null <<EOF
 systemctl stop haproxy
 # NOTE: Also inspect log at: /var/log/letsencrypt/letsencrypt.log
 #       As well as older logs at: /var/log/letsencrypt/letsencrypt.log.1 etc etc
-sleep 2
+sleep 3
 certbot -q renew 2>&1 | sudo tee -a /var/log/certbot-auto-renewal.log
 mkdir -p /etc/haproxy/certs
 ALL_DOMAINS=\$(find /etc/letsencrypt/live/ -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | tr '\n' ' ')
