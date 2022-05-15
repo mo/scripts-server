@@ -39,6 +39,7 @@ fi
 
 CONFIG_FILE=$2
 NODE_VERSION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['node']['version'])")
+NODE_INSTALLER=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['node'].get('installer', ''))")
 
 if [ "$NODE_VERSION" != "12" ] && [ "$NODE_VERSION" != "14" ] && [ "$NODE_VERSION" != "16" ] && [ "$NODE_VERSION" != "18" ]; then
     echo "error: unsupported node version"
@@ -52,12 +53,21 @@ if [ $EUID -ne 0 ]; then
 fi
 echo ; echo
 
-# Certain node packages needs make/gcc to build native code.
-# An example is "bcrypt" (on platforms where pre-built packages are not availble)
-apt-get install -y build-essential gcc g++ make
+if [ "$NODE_INSTALLER" == "deb" ]; then
 
-if [ "$(which node)" == "" ]; then
-    sudo snap install node --classic --channel=$NODE_VERSION
+    # Certain node packages needs make/gcc to build native code.
+    # An example is "bcrypt" (on platforms where pre-built packages are not availble)
+    apt-get install -y build-essential gcc g++ make
+
+    curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
 else
-    sudo snap refresh node --channel=$NODE_VERSION
+
+    if [ "$(which node)" == "" ]; then
+        sudo snap install node --classic --channel=$NODE_VERSION
+    else
+        sudo snap refresh node --channel=$NODE_VERSION
+    fi
+
 fi
