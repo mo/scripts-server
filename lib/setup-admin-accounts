@@ -57,8 +57,15 @@ if [ "$1" != "is-running-on-server" ]; then
             exit 1
         fi
 
+        CONFIG_FILE_DIR=$(dirname $CONFIG_FILE)
+        RESOLVED_ADMIN_PUBLIC_KEY_FILENAME=$(realpath $CONFIG_FILE_DIR/$ADMIN_PUBLIC_KEY_FILENAME)
+        if [ ! -f "$RESOLVED_ADMIN_PUBLIC_KEY_FILENAME" ]; then
+            echo "error: admin account \"$ADMIN_USERNAME\" has invalid \"public_key_filename\": no such file exists at $RESOLVED_ADMIN_PUBLIC_KEY_FILENAME"
+            exit 1
+        fi
+
         echo "Updating .ssh/authorized_keys for user $ADMIN_USERNAME ..."
-        scp -qp -P $SSHD_PORT $ADMIN_PUBLIC_KEY_FILENAME $PRIMARY_ADMIN_USERNAME@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+        scp -qp -P $SSHD_PORT $RESOLVED_ADMIN_PUBLIC_KEY_FILENAME $PRIMARY_ADMIN_USERNAME@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
 
     done
 
