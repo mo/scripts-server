@@ -83,6 +83,9 @@ DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 autoremove
 DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
 DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
 
+# Restart services that depend on upgraded libraries (there might also be pending kernel upgrades that require reboot but we ignore those for now).
+needrestart -u NeedRestart::UI::stdio -r a -l
+
 echo -e "\n----[ sshd ]-----------------------------------------------------------\n"
 add-apt-repository universe -y
 DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install augeas-tools
