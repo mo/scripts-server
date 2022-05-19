@@ -55,7 +55,7 @@ mv $HAPROXY_CONFIG_SCRIPT_FILENAME_TEMP_FILENAME /usr/local/sbin/haproxy-config.
 chown root:root /usr/local/sbin/haproxy-config.py
 chmod 755 /usr/local/sbin/haproxy-config.py
 
-apt-get -o DPkg::Lock::Timeout=60 install -y haproxy
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install haproxy
 
 if [ ! -f "/etc/haproxy/dhparams2048.pem" ]; then
     openssl dhparam -out /etc/haproxy/dhparams2048.pem 2048

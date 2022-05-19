@@ -57,10 +57,10 @@ if [ "$NODE_INSTALLER" == "deb" ]; then
 
     # Certain node packages needs make/gcc to build native code.
     # An example is "bcrypt" (on platforms where pre-built packages are not availble)
-    apt-get install -y build-essential gcc g++ make
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install build-essential gcc g++ make
 
     curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install nodejs
 
 else
 

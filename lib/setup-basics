@@ -74,18 +74,18 @@ if [ -e /var/lib/apt/periodic/update-success-stamp ]; then
     fi
 fi
 if [ "$DO_UPDATE" == "1" ]; then
-    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 update
 fi
 
-apt-get autoremove -y
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 autoremove
 # For details on avoiding interactive dialogs using UCF and debconf, see:
 # https://askubuntu.com/questions/146921/how-do-i-apt-get-y-dist-upgrade-without-a-grub-config-prompt
-DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
-DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" autoremove
 
 echo -e "\n----[ sshd ]-----------------------------------------------------------\n"
-add-apt-repository universe
-apt-get install -y augeas-tools
+add-apt-repository universe -y
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install augeas-tools
 augtool set /files/etc/ssh/sshd_config/PasswordAuthentication "no"
 augtool set /files/etc/ssh/sshd_config/PermitRootLogin "no"
 augtool set /files/etc/ssh/sshd_config/X11Forwarding "no"
@@ -109,7 +109,7 @@ ufw status verbose
 
 echo -e "\n----[ unattended-upgrades ]--------------------------------------------\n"
 
-apt-get install -y unattended-upgrades apt-listchanges
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install unattended-upgrades apt-listchanges
 tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null <<EOF_MARKER
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -152,7 +152,7 @@ fi
 
 echo -e "\n----[ ssmtp ]----------------------------------------------------------\n"
 
-apt-get install -y ssmtp
+DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install ssmtp
 
 tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOF_MARKER
 root=$ADMIN_EMAIL

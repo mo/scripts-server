@@ -48,5 +48,6 @@ fi
 echo ; echo
 
 for EXTRA_PACKAGE_NAME in $EXTRA_PACKAGES; do
-    apt-get install -y $EXTRA_PACKAGE_NAME
+    echo -e "\n\n=====[ $EXTRA_PACKAGE_NAME ]=============================="
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 install $EXTRA_PACKAGE_NAME
 done
