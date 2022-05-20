@@ -56,6 +56,12 @@ tee /etc/haproxy/frontends/https-main/$APP_ID.cfg >/dev/null <<EOF_MARKER
 use_backend $APP_ID if { hdr_dom(host) -i $APP_DOMAIN_NAME }
 EOF_MARKER
 
+for EXTRA_DOMAIN in $APP_DOMAIN_SANS; do
+tee -a /etc/haproxy/frontends/https-main/$APP_ID.cfg >/dev/null <<EOF_MARKER
+http-request redirect code 301 location https://$APP_DOMAIN_NAME if { hdr(host) -i $EXTRA_DOMAIN }
+EOF_MARKER
+done
+
 mkdir -p /etc/haproxy/backends/$APP_ID/
 tee /etc/haproxy/backends/$APP_ID/00-base.cfg >/dev/null <<EOF_MARKER
 server server1 127.0.0.1:$APP_WEBSERVER_PORT
