@@ -89,5 +89,5 @@ if [ ! -e "/etc/letsencrypt/live/$APP_DOMAIN_NAME" ]; then
 fi
 
 echo "Restarting haproxy ..."
-systemctl start haproxy
+systemctl restart haproxy
 echo "haproxy restart finished."
