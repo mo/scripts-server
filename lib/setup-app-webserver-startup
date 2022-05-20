@@ -51,6 +51,7 @@ APP_EXEC=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.
 APP_WORKING_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['working_directory'])")
 APP_DESCRIPTION=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['description'])")
 APP_ROOTLESS_RESTART=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('rootless_restart', False))")
+APP_ROOTLESS_STOP=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('rootless_stop', False))")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
@@ -85,9 +86,10 @@ EOF_MARKER
 chmod 644 /etc/systemd/system/$APP_ID.service
 
 if [ "$APP_ROOTLESS_RESTART" == "True" ]; then
-    echo "%$APP_ID ALL=(ALL) NOPASSWD: /bin/systemctl restart $APP_ID" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID
-else
-    echo "" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID
+    echo "%$APP_ID ALL=(ALL) NOPASSWD: /bin/systemctl restart $APP_ID" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID-rootless-restart
+fi
+if [ "$APP_ROOTLESS_STOP" == "True" ]; then
+    echo "%$APP_ID ALL=(ALL) NOPASSWD: /bin/systemctl stop $APP_ID" | EDITOR=tee visudo -f /etc/sudoers.d/$APP_ID-rootless-stop
 fi
 
 systemctl daemon-reload
