@@ -140,7 +140,7 @@ EOF_MARKER
 
 tee /etc/apt/listchanges.conf >/dev/null <<EOF_MARKER
 [apt]
-frontend=text
+frontend=none
 email_address=root
 confirm=0
 save_seen=/var/lib/apt/listchanges.db
