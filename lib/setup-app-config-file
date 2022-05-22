@@ -56,6 +56,10 @@ APP_POSTGRESQL_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print
 APP_EXTRA_DIRECTORY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('extra_directory', ''))")
 APP_HAPROXY_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('haproxy_registration', {}).get('port', ''))")
 APP_TRAEFIK_REGISTRATION_PORT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('traefik_registration', {}).get('port', ''))")
+APP_DOMAIN=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"'].get('domain', ''))")
+SMTP_SERVER=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('smtp', {}).get('server', ''))")
+SMTP_AUTH_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('smtp', {}).get('auth', {}).get('username', ''))")
+SMTP_AUTH_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin).get('smtp', {}).get('auth', {}).get('password', ''))")
 
 if [ $EUID -ne 0 ]; then
     ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; accs = json.load(sys.stdin)['admin_accounts']; print(next((acc for acc in accs if acc['username'] == '"$USERNAME"'), accs[0])['password'])")
@@ -104,6 +108,10 @@ cat $APP_CONFIG_TEMPLATE \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_EXTRA_DIRECTORY%", "'${APP_EXTRA_DIRECTORY}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_HAPROXY_REGISTRATION_PORT%", "'${APP_HAPROXY_REGISTRATION_PORT}'"))' \
     | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_TRAEFIK_REGISTRATION_PORT%", "'${APP_TRAEFIK_REGISTRATION_PORT}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%APP_DOMAIN%", "'${APP_DOMAIN}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%SMTP_SERVER%", "'${SMTP_SERVER}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%SMTP_AUTH_USERNAME%", "'${SMTP_AUTH_USERNAME}'"))' \
+    | python3 -c 'import sys; print(sys.stdin.read().replace("%SMTP_AUTH_PASSWORD%", "'${SMTP_AUTH_PASSWORD}'"))' \
     > "$APP_CONFIG_FILE_DESTINATION"
 chown $APP_ID:$APP_ID $APP_CONFIG_FILE_DESTINATION
 chmod 600 $APP_CONFIG_FILE_DESTINATION
