@@ -22,7 +22,15 @@ if [ "$1" != "is-running-on-server" ]; then
         echo "Skipping installation of application config file."
         exit 0
     fi
-    APP_CONFIG_TEMPLATE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['config_file']['template'])")
+
+    APP_CONFIG_LINE_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['apps']['"$APP_ID"'].get('config_file', {}).get('file_contents', [])))")
+    if [ "$APP_CONFIG_LINE_COUNT" != "0" ]; then
+        APP_CONFIG_LOCAL=$(mktemp)
+        for CONFIG_LINE_IDX in $(seq 0 $(($APP_CONFIG_LINE_COUNT - 1))); do
+            APP_CONFIG_LINE=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['config_file']['file_contents'][$CONFIG_LINE_IDX])")
+            echo $APP_CONFIG_LINE >> $APP_CONFIG_LOCAL
+        done
+    fi
 
     SCRIPT_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $0 $ADMIN_USERNAME@$SERVER_IP:$SCRIPT_FILENAME_ON_SERVER
@@ -31,7 +39,8 @@ if [ "$1" != "is-running-on-server" ]; then
     scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
     APP_CONFIG_TEMPLATE_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
-    scp -qp -P $SSHD_PORT $(dirname $CONFIG_FILE)/$APP_CONFIG_TEMPLATE $ADMIN_USERNAME@$SERVER_IP:$APP_CONFIG_TEMPLATE_ON_SERVER
+    scp -qp -P $SSHD_PORT $APP_CONFIG_LOCAL $ADMIN_USERNAME@$SERVER_IP:$APP_CONFIG_TEMPLATE_ON_SERVER
+    rm -f $APP_CONFIG_LOCAL
 
     LC_ALL=en_US.UTF-8 ssh -q -t $ADMIN_USERNAME@$SERVER_IP -p $SSHD_PORT \
         "$SCRIPT_FILENAME_ON_SERVER is-running-on-server $CONFIG_FILENAME_ON_SERVER $APP_ID $APP_CONFIG_TEMPLATE_ON_SERVER ; \
