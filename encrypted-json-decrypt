@@ -1,0 +1,17 @@
+#!/bin/bash
+ENCRYPTED_FILE=$1
+if [ "$ENCRYPTED_FILE" == "" ]; then
+    echo "usage: $(basename $0) ENCRYPTED_FILE"
+    exit 1
+fi
+
+sops --decrypt $ENCRYPTED_FILE 2>/dev/null
+if [ "$?" == "0" ]; then
+    exit 0
+fi
+
+echo -n "Enter SOPS_AGE_KEY: " >&2
+read -s SOPS_AGE_KEY
+echo >&2
+export SOPS_AGE_KEY
+sops --decrypt $ENCRYPTED_FILE

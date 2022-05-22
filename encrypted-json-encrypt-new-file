@@ -1,0 +1,9 @@
+#!/bin/bash
+TARGET_FILE=$1
+if [ "$TARGET_FILE" == "" ]; then
+    echo "usage: $(basename $0) TARGET_FILE"
+    exit 1
+fi
+
+sops --encrypt -i $TARGET_FILE
+chmod 600 $TARGET_FILE
