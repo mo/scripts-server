@@ -24,12 +24,16 @@ if [ "$1" != "is-running-on-server" ]; then
     CONFIG_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $CONFIG_FILE $ADMIN_USERNAME@$SERVER_IP:$CONFIG_FILENAME_ON_SERVER
 
-    PUBKEY_FILENAMES=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)['apps']['"$APP_ID"'].get('public_key_filenames', [])))")
-    if [ "$PUBKEY_FILENAMES" == "" ]; then
-        PUBKEY_FILENAMES=$HOME/.ssh/id_rsa.pub
+    PUBLIC_KEYS_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['apps']['"$APP_ID"'].get('public_keys', [])))")
+    if [ "$PUBLIC_KEYS_COUNT" == "0" ]; then
+        echo "No public keys found for app '$APP_ID'"
+        exit 1
     fi
     CONCATENATED_PUBKEYS_FILENAME_LOCAL=$(mktemp)
-    (cd $(dirname $CONFIG_FILE) ; cat $PUBKEY_FILENAMES) > $CONCATENATED_PUBKEYS_FILENAME_LOCAL
+    for PUBLIC_KEY_IDX in $(seq 0 $(($PUBLIC_KEYS_COUNT - 1))); do
+        PUBLIC_KEY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['apps']['"$APP_ID"']['public_keys'][$PUBLIC_KEY_IDX])")
+        echo $PUBLIC_KEY >> $CONCATENATED_PUBKEYS_FILENAME_LOCAL
+    done
     PUBKEYS_FILENAME_ON_SERVER=$(ssh -p $SSHD_PORT $ADMIN_USERNAME@$SERVER_IP mktemp)
     scp -qp -P $SSHD_PORT $CONCATENATED_PUBKEYS_FILENAME_LOCAL $ADMIN_USERNAME@$SERVER_IP:$PUBKEYS_FILENAME_ON_SERVER
 

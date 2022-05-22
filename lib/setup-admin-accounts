@@ -51,21 +51,19 @@ if [ "$1" != "is-running-on-server" ]; then
 
         ADMIN_USERNAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['username'])")
         ADMIN_PASSWORD=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX]['password'])")
-        ADMIN_PUBLIC_KEY_FILENAME=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX].get('public_key_filename', ''))")
-        if [ "$ADMIN_PUBLIC_KEY_FILENAME" == "" ]; then
-            echo "error: admin account \"$ADMIN_USERNAME\" has no \"public_key_filename\" defined."
+        ADMIN_PUBLIC_KEY=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(json.load(sys.stdin)['admin_accounts'][$ACCOUNT_IDX].get('public_key', ''))")
+        if [ "$ADMIN_PUBLIC_KEY" == "" ]; then
+            echo "error: admin account \"$ADMIN_USERNAME\" has no \"public_key\" defined."
             exit 1
         fi
 
-        CONFIG_FILE_DIR=$(dirname $CONFIG_FILE)
-        RESOLVED_ADMIN_PUBLIC_KEY_FILENAME=$(realpath $CONFIG_FILE_DIR/$ADMIN_PUBLIC_KEY_FILENAME)
-        if [ ! -f "$RESOLVED_ADMIN_PUBLIC_KEY_FILENAME" ]; then
-            echo "error: admin account \"$ADMIN_USERNAME\" has invalid \"public_key_filename\": no such file exists at $RESOLVED_ADMIN_PUBLIC_KEY_FILENAME"
-            exit 1
-        fi
+        PUBLIC_KEY_TEMP_FILE=$(mktemp)
+        echo "$ADMIN_PUBLIC_KEY" > $PUBLIC_KEY_TEMP_FILE
 
         echo "Updating .ssh/authorized_keys for user $ADMIN_USERNAME ..."
-        scp -qp -P $SSHD_PORT $RESOLVED_ADMIN_PUBLIC_KEY_FILENAME $PRIMARY_ADMIN_USERNAME@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+        scp -qp -P $SSHD_PORT $PUBLIC_KEY_TEMP_FILE $PRIMARY_ADMIN_USERNAME@$SERVER_IP:/home/$ADMIN_USERNAME/.ssh/authorized_keys
+
+        rm -f $PUBLIC_KEY_TEMP_FILE
 
     done
 
