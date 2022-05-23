@@ -16,6 +16,7 @@ MACHINE_IMAGE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(jso
 MACHINE_SIZE=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['size'])")
 MACHINE_REGION=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine']['region'])")
 MACHINE_FLOATING_IP=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('floating_ip', ''))")
+MACHINE_FLOATING_IP_OUTBOUND_TRAFFIC=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('floating_ip_outbound_traffic', False))")
 MACHINE_DO_AUTH_CONTEXT=$(cat $DEPLOYMENT_CONFIG | python3 -c "import sys, json; print(json.load(sys.stdin)['machine'].get('do_auth_context', ''))")
 
 if [ "$(which doctl)" == "" ]; then
@@ -76,6 +77,12 @@ if [ "$MACHINE_FLOATING_IP" != "" ]; then
     # and prevents "floating-ip-action" output from reaching stdout (we only
     # want to print the ipv4 of the created machine).
     FLOATING_IP_ASSIGNMENT_OUTPUT=$(doctl compute floating-ip-action assign $MACHINE_FLOATING_IP $DROPLET_ID)
+fi
+
+if [ "$MACHINE_FLOATING_IP_OUTBOUND_TRAFFIC" == "True" ]; then
+    ANCHOR_IP=$(ssh root@$DROPLET_IPV4 "curl -s http://169.254.169.254/metadata/v1/interfaces/public/0/anchor_ipv4/gateway")
+    ssh root@$DROPLET_IPV4 "echo 'network: {config: disabled}' > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg"
+    ssh root@$DROPLET_IPV4 "cat /etc/netplan/50-cloud-init.yaml | python3 -c \"import yaml;import sys;y=yaml.safe_load(sys.stdin);next(r for r in y['network']['ethernets']['eth0']['routes'] if r['to'] == '0.0.0.0/0')['via'] = '"$ANCHOR_IP"'; print(yaml.dump(y, default_flow_style=False, sort_keys=False))\" > /etc/netplan/50-cloud-init.yaml.fixed ; mv /etc/netplan/50-cloud-init.yaml.fixed /etc/netplan/50-cloud-init.yaml ; netplan apply"
 fi
 
 echo $DROPLET_IPV4
