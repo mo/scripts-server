@@ -7,7 +7,7 @@ fi
 
 sops --decrypt $ENCRYPTED_FILE 2>/dev/null >/dev/null
 if [ "$?" == "0" ]; then
-    sops $ENCRYPTED_FILE
+    EDITOR=nano sops $ENCRYPTED_FILE
 else
     echo -n "Enter SOPS_AGE_KEY: " >&2
     read -s SOPS_AGE_KEY
