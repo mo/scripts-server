@@ -13,5 +13,5 @@ else
     read -s SOPS_AGE_KEY
     echo >&2
     export SOPS_AGE_KEY
-    sops $ENCRYPTED_FILE
+    EDITOR=nano sops $ENCRYPTED_FILE
 fi
