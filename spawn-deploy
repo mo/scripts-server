@@ -32,6 +32,9 @@ fi
 sleep 3
 
 SERVER_IP=$($SCRIPT_DIR/lib/create-machine $DEPLOYMENT_CONFIG $MACHINE_NAME)
+
+echo "Starting deploy onto new machine spawned at $SERVER_IP ..."
+
 $SCRIPT_DIR/deploy $DEPLOYMENT_CONFIG $SERVER_IP
 
 echo -e "\n\n\nFinished setting up new machine \"$MACHINE_NAME\" with ip $SERVER_IP\n"
