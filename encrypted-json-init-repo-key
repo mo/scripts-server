@@ -1,0 +1,21 @@
+#!/bin/bash
+
+PRIVATE_KEY=$(age-keygen 2>&1 | g AGE-SECRET)
+PUBLIC_KEY=$(echo $PRIVATE_KEY | age-keygen -y)
+
+if [ -e .sops.yml ]; then
+    echo "error: .sops.yml already exists, refusing to overwrite"
+    exit 1
+fi
+
+cat <<EOF_MARKER > .sops.yml
+creation_rules:
+  - age: $PUBLIC_KEY
+EOF_MARKER
+
+echo
+echo
+echo "Created .sops.yml containing new public key."
+echo
+echo "Private key is:"
+echo $PRIVATE_KEY
