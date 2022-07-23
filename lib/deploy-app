@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e
+set -o pipefail
+
 SCRIPT_DIR=$(dirname $0)
 
 if [ "$DEBUG" == "1" ]; then
