@@ -26,7 +26,7 @@ if [ "$1" != "is-running-on-server" ]; then
 
     PUBLIC_KEYS_COUNT=$(cat $CONFIG_FILE | python3 -c "import sys, json; print(len(json.load(sys.stdin)['apps']['"$APP_ID"'].get('public_keys', [])))")
     if [ "$PUBLIC_KEYS_COUNT" == "0" ]; then
-        echo "No public keys found for app '$APP_ID'"
+        echo "error: No public keys found for app '$APP_ID'"
         exit 1
     fi
     CONCATENATED_PUBKEYS_FILENAME_LOCAL=$(mktemp)
